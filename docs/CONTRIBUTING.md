@@ -39,7 +39,7 @@ uv sync
 uv sync --extra api
 ```
 
-`uv sync` 默认会装 `[dependency-groups] dev` 里的工具。**不要**手动 `python -m venv` 或 `pip install -e`，`uv.lock` 保证版本一致。
+`uv sync` 默认会装 `[dependency-groups] dev` 里的工具，不需要额外加 `--group dev`。**不要**手动 `python -m venv` 或 `pip install -e`，`uv.lock` 保证版本一致。
 
 ### 什么时候需要 `--extra api`
 
@@ -83,6 +83,8 @@ skillforge/
 │   ├── version.json
 │   └── subskills/<name>/SKILL.md
 └── tests/
+    ├── unit/
+    └── integration/
 ```
 
 ### 跨层依赖规则（强制）
@@ -108,20 +110,21 @@ L4 → L3 → L2 → L1
 ### 提交前必跑
 
 ```bash
-uv run poe format
-uv run poe check
+uv run poe format      # 先格式化，会实际修改文件
+uv run poe check       # 再跑检查链
 ```
 
-它依次执行：
+`poe check` 依次执行五步：
 
 | 步骤        | 命令                    | 作用                              |
 | :---------- | :---------------------- | :-------------------------------- |
-| `format`    | `ruff format .`         | 格式化（**会实际修改文件**）      |
 | `lint`      | `ruff check .`          | 代码检查                          |
 | `fmt-check` | `ruff format --check .` | 格式检查（不修改文件）            |
 | `typecheck` | `mypy skillforge`       | 类型检查（`strict = false` 起步） |
 | `validate`  | `skillforge validate`   | 技能包契约与 `index.json` 一致性  |
 | `test`      | `pytest -q`             | 单元 + 集成测试                   |
+
+**`poe check` 不包含 `format`**，因为 `format` 会写文件，不适合作为 CI 检查步骤。提交前先手动跑一次 `uv run poe format`，再跑 `uv run poe check` 确认其余五步全绿。
 
 **任一失败即停**。`validate` 排在 `test` 之前是有意的：先确保 CLI 入口和技能包能加载，再跑测试，避免“测试全绿但用户调不动命令行”。
 
@@ -130,6 +133,7 @@ uv run poe check
 ```bash
 uv run poe format       # 实际修改文件
 uv run poe lint         # 只检查
+uv run poe fmt-check    # 只检查格式，不修改
 uv run poe typecheck    # 只检查 skillforge/，不含 tests/
 uv run poe validate     # 只校验技能包
 uv run poe test         # 只跑测试
@@ -200,9 +204,12 @@ logger.info(
 
 ### trace_id 与采样
 
-- **trace_id 贯通**：`Orchestrator.run` 在 `trace_id` 为空时自动生成 UUID；
-  CLI 的 `run_file` 显式生成并传入；API 从 `X-Trace-Id` 头读取（头名可经
-  `config/logging.yaml` 的 `trace_header` 修改）。
+- **trace_id 贯通**：`Orchestrator.run` 在 `trace_id` 为空时自动生成 UUID，
+  所有入口（CLI、API、Agent 宿主）都能拿到非空 trace_id。CLI 的 `_cmd_run`
+  不显式传 trace_id，由 `run()` 自动生成；API 额外从 `X-Trace-Id` 头读取
+  （头名可经 `config/logging.yaml` 的 `trace_header` 修改），请求头为空时
+  同样回退到自动生成；`Orchestrator.run_file` 是备用的文件输入入口，会显式生成
+  trace_id 并传给 `run()`。
 - **所有 L1/L3 日志必带 `trace_id` 和 `layer`**，`session_id` 在会话创建后带上。
 - **采样**：`config/logging.yaml` 的 `sample_rate < 1.0` 时按比例采样，
   `0.0` 全丢。生产环境如需降噪可设为 `0.1` 等；本地开发保持 `1.0`。
@@ -225,16 +232,17 @@ logger.info(
 | 单元 | `tests/unit/`        | 纯函数、单模块、规则正反例 | 否                  |
 | 集成 | `tests/integration/` | 端到端流程、降级路径       | 否（模型调用 mock） |
 
-- **`l1_governance/` 与 `l3_orchestration/` 行覆盖率 ≥ 85%**，`l4_interface/` ≥ 60%。
+**覆盖率目标是评审标准，不是 CI 强制门槛**：`l1_governance/` 与 `l3_orchestration/` 行覆盖率 ≥ 85%，`l4_interface/` ≥ 60%。`pyproject.toml` 的 `[tool.coverage.report]` 没有配 `fail_under`，覆盖率不达标不会阻断 CI，但 review 时会作为参考。新增代码尽量带测试，明显降低覆盖率的 PR 会被要求补充。
+
 - 新增门禁规则必须**同时提供通过用例和失败用例**。
 - 测试不依赖真实 LLM。`LLMClient` 是 `Protocol`，测试里传一个返回固定字符串的 mock 即可。
 - **API 测试**用 `pytest.importorskip("fastapi")` 保护，没装 `[api]` extra 时整体跳过。
-- 使用 `tests/fixtures/` 下的样例数据，不要在测试里硬编码大段正文。
+- 测试数据用 `conftest.py` 里的 fixture 或独立的样例文件，**不要在测试里硬编码大段正文**。当前仓库没有 `tests/fixtures/` 目录，需要共享样例时优先加 `conftest.py` 的 fixture。
 
 ```bash
-uv run pytest tests/unit -q              # 只跑单元
-uv run pytest -q --cov=skillforge --cov-report=term-missing
-uv run pytest tests/unit/test_api_security.py -q   # 需要 --extra api
+uv run pytest tests/unit -q                       # 只跑单元
+uv run pytest -q                                  # 全量，--cov 已在 addopts 中
+uv run pytest tests/unit/test_api_security.py -q  # 需要 --extra api
 ```
 
 ### 写测试时的两个反模式
@@ -276,18 +284,31 @@ metadata:
   output: docx # 必需，markdown 或 docx
   sections: [...] # 必需，门禁据此校验结构
   gates: # 可选，覆盖默认权重
-    fact_check: 0.5
+    cliche_check: 0.5
 ---
 ```
 
+`gates` 里的规则名必须是 `l1_governance/rules/__init__.py` 中已注册的五条之一：`cliche_check`、`format_check`、`repetition_check`、`sensitive_check`、`placeholder_check`。写未注册的规则名不会报错，但也不生效。
+
 正文建议按五段写：**角色 → 信息采集（强制追问）→ 结构化生成 → 导出 → 自检清单**。
 
-### 7.2 登记到两个地方
+### 7.2 登记到 `index.json`
 
-- `skills/index.json` 的 `skills` 数组加一条（`name`、`path`、`triggers`、`category`、`description`）
-- `skills/SKILL.md` 的分流表加一行（供纯 Agent 模式使用）
+在 `skills/index.json` 的 `skills` 数组加一条：
 
-**注意**：`index.json` 的 `path` 必须相对 `skills/`，不能是绝对路径或含 `..`——`loader._resolve_entry_path` 会拒绝并报 `技能路径越界`。
+```json
+{
+  "name": "<name>",
+  "category": "<category>",
+  "path": "subskills/<name>/SKILL.md",
+  "triggers": ["触发词1", "触发词2"],
+  "description": "一句话描述"
+}
+```
+
+**注意**：`path` 必须相对 `skills/`，不能是绝对路径或含 `..`——`loader._resolve_entry_path` 会拒绝并报 `技能路径越界`。
+
+**当前 `skills/` 下没有根 `SKILL.md` 分流表**，路由完全由 `index.json` 的 `triggers` 和 `config/routing.yaml` 的 `keywords` 驱动，不需要额外维护分流表。
 
 ### 7.3 更新版本
 
@@ -327,7 +348,7 @@ uv run skillforge validate
 
 ### 调整路由
 
-只改 `config/routing.yaml`。注意置信度算法是 **命中词数 / 关键词总数**，关键词表越长，单个词命中越难达到阈值。每个技能建议只保留 **2–3 个最具区分度的关键词**。
+改 `config/routing.yaml`。注意置信度算法是 **命中词数 / 关键词总数**，关键词表越长，单个词命中越难达到阈值。每个技能建议只保留 **2–3 个最具区分度的关键词**。
 
 ### 接入新的 Agent 宿主
 
@@ -348,7 +369,7 @@ uv run skillforge validate
 ```text
 <type>(<scope>): <subject>
 
-feat(l1): add fact_check rule for rank patterns
+feat(l1): add repetition_check rule
 fix(l4): narrow decision.skill to str before load
 docs(skills): add national-scholarship skill
 chore(config): lower routing threshold to 0.5
@@ -358,7 +379,8 @@ chore(config): lower routing threshold to 0.5
 
 ### PR 检查清单
 
-- [ ] `uv run poe check` 全绿（六步：format → lint → fmt-check → typecheck → validate → test）
+- [ ] 提交前跑过 `uv run poe format`，并已提交格式化产生的变更
+- [ ] `uv run poe check` 全绿（五步：lint → fmt-check → typecheck → validate → test）
 - [ ] 新增行为有对应测试
 - [ ] 改了 `shared/types.py` 或 `SKILL.md` 契约字段，同步更新了开发文档
 - [ ] 有用户可见的变更，更新了 `CHANGELOG.md` 的 `[Unreleased]`
@@ -382,7 +404,7 @@ chore(config): lower routing threshold to 0.5
 
 ### Windows 编码问题（高频）
 
-- **不要用 PowerShell 的 `cat > file <<'EOF'` 或 heredoc 写 Python 文件**。PowerShell 不支持 Bash heredoc，会把内容写坏或写成空文件。
+- **不要用 Bash 的 heredoc 语法（`cat > file <<'EOF'`）写文件**——PowerShell 不支持它，会创建名为 `EOF` 的文件或写出空文件。Windows 用户用 VS Code 直接编辑保存，或在 PowerShell 里用 here-string `@"..."@` 配合 `[IO.File]::WriteAllText`。
 - **所有 `.py` / `.md` / `.json` / `.yaml` 文件保存为 UTF-8（无 BOM）**。
 - 用 `utf-8-sig` 读取可能带 BOM 的文件（`shared/config.py`、`loader.py`、`registry.py` 已这样做）。
 - 终端里看中文文件乱码是 PowerShell 用 GBK 解码 UTF-8 的显示问题，文件本身没坏。用 `uv run python -c "print(open('path', encoding='utf-8').read())"` 读取。
@@ -393,7 +415,7 @@ chore(config): lower routing threshold to 0.5
 
 ### `Import "openai" / "fastapi" / "pydantic" could not be resolved`
 
-这些包在 `[api]` extra 里。**推荐做法**：`uv sync --group dev --extra api`，然后让 IDE 解释器指向 `.venv`。
+这些包在 `[api]` extra 里。**推荐做法**：`uv sync --extra api`，然后让 IDE 解释器指向 `.venv`。
 
 **不推荐**加 `# type: ignore[import-not-found]`：装了 extra 后 `warn_unused_ignores` 会报“多余 ignore”，来回折腾。mypy 侧由 `ignore_missing_imports = true` 兜住，Pyright 侧靠装 extra 解决。
 
@@ -412,13 +434,13 @@ chore(config): lower routing threshold to 0.5
 
 常见于 `os.getenv(...)` 的返回值直接传给要求 `str` 的参数。用 `x or "默认值"` 兜底并显式标注类型，**不要用 `# type: ignore`**。`llm_client.py` 的 `self.model: str = model or os.getenv("SKILLFORGE_MODEL") or "gpt-4o-mini"` 是标准写法。
 
-### `poe check` 里 `format` 改了文件导致后续步骤结果不一致
-
-本地开发没问题（改了就是改了）。如果 CI 里出现“本地通过、CI 失败”，把 CI 的 `poe check` 换成按顺序跑 `lint && fmt-check && typecheck && validate && test`，跳过 `format` 的写入行为。
-
 ### API 测试被跳过
 
 `test_api_security.py` 和 `test_api_out_path.py` 顶部有 `pytest.importorskip("fastapi")`，没装 `[api]` extra 时整体跳过。CI 里如果这些测试显示 skipped，检查 `uv sync` 是否带了 `--extra api`。
+
+### `poe check` 在 CI 里和本地结果不一致
+
+`poe check` 不含 `format`，五步都是只读操作，本地和 CI 应该一致。如果确实不一致，先确认本地是否漏跑了 `uv run poe format`——未格式化的文件会让 `fmt-check` 失败，而 CI 不会替你格式化。CI 里直接跑 `uv run poe check` 即可，不需要额外调整。
 
 ---
 
