@@ -1,0 +1,13 @@
+{
+  "name": "skillforge-skills",
+  "version": "0.1.0",
+  "skills": [
+    {
+      "name": "test-skill",
+      "category": "dev",
+      "path": "subskills/test-skill/SKILL.md",
+      "triggers": ["test", "测试", "tests"],
+      "description": "测试SKILL"
+    }
+  ]
+}

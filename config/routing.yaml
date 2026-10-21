@@ -1,0 +1,8 @@
+similarity_threshold: 0.5
+clarify_gap: 0.10
+keywords:
+  test-skill:
+    - 测试
+    - test
+    - tests
+    - Test

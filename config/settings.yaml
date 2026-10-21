@@ -1,0 +1,5 @@
+model: gpt-4o-mini
+timeout_seconds: 120
+max_rewrite_rounds: 2
+skills_root: skills
+queue_concurrency: 3

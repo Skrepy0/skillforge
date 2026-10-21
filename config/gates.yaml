@@ -1,0 +1,10 @@
+pass_threshold: 0.80
+rules:
+  format_check:
+    enabled: true
+    weight: 0.3
+  cliche_check:
+    enabled: true
+    weight: 0.2
+    phrases:
+      - 敏感词

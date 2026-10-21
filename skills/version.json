@@ -1,0 +1,9 @@
+{
+  "version": "0.1.0",
+  "released": "2026-10-21",
+  "skills": {
+    "thesis-proposal": "0.1.0",
+    "national-scholarship": "0.1.0"
+  },
+  "breaking_changes": []
+}
