@@ -22,10 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 
-dependencies = [
-    "python-docx>=1.1",
-    "pyyaml>=6.0",
-]
+dependencies = ["python-docx>=1.1", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
 api = [
@@ -52,6 +49,7 @@ include = ["skillforge*"]
 dev = [
     "build>=1.2",
     "httpx>=0.27",
+    "mypy>=1.10",
     "poethepoet>=0.49.0",
     "pytest>=8",
     "pytest-cov>=5",
@@ -63,9 +61,10 @@ test = "pytest -q"
 lint = "ruff check ."
 format = "ruff format ."
 fmt-check = "ruff format --check ."
+typecheck = "mypy skillforge"
 validate = "skillforge validate"
 # 提交前一条命令跑完所有检查
-check = ["lint", "fmt-check", "validate", "test"]
+check = ["lint", "fmt-check", "typecheck", "validate", "test"]
 
 [tool.ruff]
 target-version = "py311"
@@ -86,3 +85,11 @@ addopts = ["--cov=skillforge", "--cov-report=term-missing"]
 
 [tool.coverage.run]
 source = ["skillforge"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+ignore_missing_imports = true

@@ -66,6 +66,9 @@
 - Ruff 统一 lint 与 format，行宽 100，目标 py311
 - pytest + pytest-cov，`--cov=skillforge --cov-report=term-missing`
 - `.github/workflows/ci.yml`：矩阵 Python 3.11 / 3.12 / 3.13，`uv sync --group dev` 后跑 `uv run poe check`
+- 新增 mypy 类型检查任务 `poe typecheck`，并入 `poe check` 检查链
+- `[dependency-groups] dev` 新增 `mypy>=1.10`
+- `[tool.mypy]` 配置：`strict = false` 起步、`ignore_missing_imports = true` 兼容 `[api]` extra 的可选依赖
 
 #### Changed
 
@@ -85,6 +88,9 @@
 - `rPr`/`rFonts` 可能为 `None`：改用 `get_or_add_rPr()` / `get_or_add_rFonts()`
 - `RouteDecision.skill` 与 `allowed_root` 的类型收窄，消除 `str | None` 赋给 `str` 的错误
 - `api.py` 的 `from __future__ import annotations` 导致 FastAPI 把 body 误判为查询参数（422）：该文件移除该导入
+- `api.py` 的 `create_app(llm=...)` 补 `LLMClient | None` 类型标注
+- `state_machine.py` 用 `allowed is None` 替代 `not allowed`，消除 Optional 收窄歧义
+- `llm_client.py` 移除多余的 `# type: ignore[import-not-found]`（`ignore_missing_imports` 已覆盖）
 
 #### Security
 

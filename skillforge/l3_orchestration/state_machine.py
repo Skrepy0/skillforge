@@ -20,7 +20,7 @@ TRANSITIONS: dict[SessionPhase, dict[str, SessionPhase]] = {
 class StateMachine:
     def transition(self, session: SessionState, event: str) -> SessionPhase:
         allowed = TRANSITIONS.get(session.phase)
-        if not allowed or event not in allowed:
+        if allowed is None or event not in allowed:
             raise SkillForgeError(f"非法迁移: 阶段 {session.phase.value} 不接受事件 {event}")
         session.phase = allowed[event]
         return session.phase

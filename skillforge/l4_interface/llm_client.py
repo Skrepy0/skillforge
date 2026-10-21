@@ -20,7 +20,9 @@ class OpenAICompatibleClient:
         try:
             from openai import OpenAI
         except ImportError as exc:
-            raise SkillForgeError("缺少 openai 依赖：uv add --optional api openai") from exc
+            raise SkillForgeError(
+                "缺少 openai 依赖：请执行 uv sync --extra api（或 pip install 'skillforge[api]'）"
+            ) from exc
 
         key = api_key or os.getenv("OPENAI_API_KEY")
         if not key:
@@ -28,8 +30,8 @@ class OpenAICompatibleClient:
                 "未设置 OPENAI_API_KEY。请在 .env 或环境变量中配置，或改用其它 LLMClient 实现。"
             )
 
-        self.model = model or os.getenv("SKILLFORGE_MODEL", "gpt-4o-mini")
-        self._client = OpenAI(
+        self.model: str = model or os.getenv("SKILLFORGE_MODEL") or "gpt-4o-mini"
+        self._client: OpenAI = OpenAI(
             api_key=key,
             base_url=base_url or os.getenv("OPENAI_BASE_URL"),
             timeout=timeout,

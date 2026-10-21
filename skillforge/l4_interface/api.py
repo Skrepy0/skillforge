@@ -18,6 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from skillforge.l3_orchestration.task_queue import LLMClient
 from skillforge.shared.paths import PathValidationError, ensure_parent, resolve_output_path
 
 
@@ -141,7 +142,7 @@ def _failures(gate) -> list[dict] | None:
 
 
 def create_app(
-    llm=None,
+    llm: LLMClient | None = None,
     api_key: str | None = None,
     rate_limit_per_minute: int | None = None,
     allowed_output_dir: Path | str | None = None,
