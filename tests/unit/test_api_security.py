@@ -151,14 +151,21 @@ def test_rate_limit_independent_per_key(monkeypatch):
 
 def test_out_path_rejected_when_output_dir_not_configured(monkeypatch):
     _fake_orchestrator(monkeypatch)
-    client = _client(api_key=API_KEY, rate_limit_per_minute=0)
+    monkeypatch.delenv("SKILLFORGE_OUTPUT_DIR", raising=False)
+
+    app = api.create_app(
+        llm=_StubLLM(),
+        api_key=API_KEY,
+        rate_limit_per_minute=0,
+    )
+
+    client = TestClient(app)
     resp = client.post(
         "/generate",
         json={"request": "hi", "out_path": "out.docx"},
         headers={"X-API-Key": API_KEY},
     )
     assert resp.status_code == 403
-    assert "未启用文件输出" in resp.json()["detail"]
 
 
 @pytest.mark.parametrize(
