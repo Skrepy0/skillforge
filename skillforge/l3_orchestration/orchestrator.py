@@ -37,7 +37,7 @@ class Orchestrator:
         self.queue = TaskQueue(llm, config.settings.queue_concurrency)
         self.rewriter = Rewriter(llm)
         self.gates = GateRunner(config.gates)
-        self.renderer = DocxRenderer(config.skills_root)
+        self.renderer = DocxRenderer()
         self.fallback = Fallback()
 
     @classmethod

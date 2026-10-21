@@ -1,4 +1,12 @@
-"""共享的 docx 排版函数，供各技能脚本与渲染器复用。"""
+"""技能包共享的 docx 排版函数。
+
+⚠️ 重要：SkillForge 的 DocxRenderer 不再通过 importlib 动态加载本文件。
+渲染器使用受信任的 skillforge/l2_capability/renderer/docx_common.py 副本。
+本文件保留，仅供技能包内部脚本（skills/subskills/*/scripts/*.py）复用。
+
+不要依赖本文件被渲染器执行：修改这里的排版逻辑不会影响引擎生成的 docx；
+如需统一调整样式，应修改 skillforge/l2_capability/renderer/docx_common.py。
+"""
 
 from __future__ import annotations
 
