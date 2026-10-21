@@ -157,6 +157,9 @@ def create_app(
         allowed_output_dir: 输出目录白名单。未传时读取
             SKILLFORGE_OUTPUT_DIR。为 None 时拒绝任何 out_path。
     """
+    from skillforge.shared.config import load_project_dotenv
+
+    load_project_dotenv()
     from fastapi import Depends, FastAPI, Header, HTTPException, Request
 
     from skillforge.shared.config import load_config

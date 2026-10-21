@@ -87,6 +87,9 @@ def _cmd_skills_list(_args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from skillforge.shared.config import load_project_dotenv
+
+    load_project_dotenv()
     parser = argparse.ArgumentParser(prog="skillforge", description="SkillForge 运行时 CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

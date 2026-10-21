@@ -17,6 +17,9 @@ class OpenAICompatibleClient:
         base_url: str | None = None,
         timeout: float = 120.0,
     ) -> None:
+        from skillforge.shared.config import load_project_dotenv
+
+        load_project_dotenv()
         try:
             from openai import OpenAI
         except ImportError as exc:

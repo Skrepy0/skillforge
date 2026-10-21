@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import find_dotenv, load_dotenv
 
 from skillforge.shared.errors import ConfigError
 
@@ -121,7 +122,22 @@ def _validate_gates(gates: GatesConfig) -> None:
         raise ConfigError("gates.rules.placeholder_check.markers 必须是字符串列表")
 
 
+def load_project_dotenv() -> None:
+    """从 cwd 向上查找并加载 .env 文件。
+
+    - find_dotenv(usecwd=True)：从当前工作目录开始向上查找，而非从调用栈。
+      这样无论从 CLI、API 还是测试入口调用，都从"项目根"开始找。
+    - override=False：shell 已设置的变量优先，.env 不会覆盖它们。
+    - 找不到 .env 时静默返回，不报错。
+    - 幂等：重复调用不会重复加载；已加载的变量不会被第二次读取覆盖。
+    """
+    path = find_dotenv(usecwd=True, raise_error_if_not_found=False)
+    if path:
+        load_dotenv(path, override=False)
+
+
 def load_config(root: Path | None = None) -> AppConfig:
+    load_project_dotenv()
     repo = root or _repo_root()
     cfg_dir = repo / "config"
 

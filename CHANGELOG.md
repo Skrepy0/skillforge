@@ -84,6 +84,7 @@
 - `gates.yaml` 权重重新分配为总和 1.0（cliche 0.25、format 0.25、repetition 0.15、sensitive 0.20、placeholder 0.15），`pass_threshold` 调整为 0.80
 - `_validate_gates` 扩展校验 `sensitive_check.words` 与 `placeholder_check.markers` 类型
 - `requires-python` 从 `>=3.10` 收紧到 `>=3.11`，与 `.python-version`、Ruff `target-version` 对齐
+- 添加`python-dotenv`，支持读取`.env`文件
 
 #### Fixed
 

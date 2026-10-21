@@ -3,8 +3,8 @@ revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.15' and sys_platform == 'emscripten'",
     "python_full_version >= '3.15' and sys_platform != 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.15' and sys_platform == 'emscripten'",
     "(python_full_version < '3.15' and sys_platform != 'emscripten') or (python_full_version < '3.12' and sys_platform == 'emscripten')",
 ]
 
@@ -1274,6 +1274,7 @@ name = "skillforge"
 source = { editable = "." }
 dependencies = [
     { name = "python-docx" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
 ]
 
@@ -1302,6 +1303,7 @@ requires-dist = [
     { name = "openai", marker = "extra == 'api'", specifier = ">=1.30" },
     { name = "pydantic", marker = "extra == 'api'", specifier = ">=2.0" },
     { name = "python-docx", specifier = ">=1.1" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.29" },
 ]
