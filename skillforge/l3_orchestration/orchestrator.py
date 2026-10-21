@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from skillforge.l3_orchestration.session import SessionManager
 from skillforge.l3_orchestration.state_machine import StateMachine
 from skillforge.l3_orchestration.task_queue import LLMClient, TaskQueue
 from skillforge.shared.config import AppConfig, load_config
+from skillforge.shared.errors import RenderError
 from skillforge.shared.types import DraftDocument
 
 
@@ -90,7 +92,9 @@ class Orchestrator:
                 self.fsm.transition(session, "gate_pass")
                 out = None
                 if contract.output == "docx" and out_path:
-                    out = self.renderer.render(draft, Path(out_path))
+                    safe = self._validate_render_target(Path(out_path))
+                    safe.parent.mkdir(parents=True, exist_ok=True)
+                    out = self.renderer.render(draft, safe)
                 return {
                     "status": "delivered",
                     "session_id": session.session_id,
@@ -129,3 +133,23 @@ class Orchestrator:
             )
         )
         return 0 if result["status"] == "delivered" else 1
+
+    def _output_root(self) -> Path | None:
+        raw = self.config.settings.output_dir or os.getenv("SKILLFORGE_OUTPUT_DIR")
+        if not raw:
+            return None
+        p = Path(raw)
+        return p if p.is_absolute() else self.config.root / p
+
+    def _validate_render_target(self, out_path: Path) -> Path:
+        if out_path.suffix.lower() != ".docx":
+            raise RenderError("输出路径必须以 .docx 结尾")
+        root = self._output_root()
+        if root is None:
+            return out_path
+        resolved = out_path.resolve() if out_path.is_absolute() else (root / out_path).resolve()
+        try:
+            resolved.relative_to(root.resolve())
+        except ValueError as exc:
+            raise RenderError("输出路径越过允许目录") from exc
+        return resolved

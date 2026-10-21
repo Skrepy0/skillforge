@@ -3,3 +3,4 @@ timeout_seconds: 120
 max_rewrite_rounds: 2
 skills_root: skills
 queue_concurrency: 3
+output_dir: null   # 可选；配置后 orchestrator 会二次校验 out_path 是否在此目录内

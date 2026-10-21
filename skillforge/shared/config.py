@@ -19,6 +19,7 @@ class Settings:
     max_rewrite_rounds: int
     skills_root: str
     queue_concurrency: int
+    output_dir: str | None = None
 
 
 @dataclass(frozen=True)

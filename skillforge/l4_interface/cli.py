@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 from skillforge.shared.errors import SkillForgeError
+from skillforge.shared.paths import PathValidationError, resolve_output_path
 
 
 def _ask_interactively(missing: list[str]) -> dict[str, str]:
@@ -33,11 +35,23 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return 2
 
     orchestrator = Orchestrator.from_config(llm=llm)
+    raw_out = payload.get("out_path")
+    output_root = args.output_dir or os.getenv("SKILLFORGE_OUTPUT_DIR")
+    try:
+        safe_out = resolve_output_path(
+            raw_out,
+            Path(output_root) if output_root else None,
+            require_root=False,
+        )
+    except PathValidationError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
+
     result = orchestrator.run(
         request=payload.get("request", args.skill),
         collected=payload.get("collected", {}),
         ask_fn=_ask_interactively,
-        out_path=Path(payload["out_path"]) if payload.get("out_path") else None,
+        out_path=safe_out,
     )
 
     printable = {k: v for k, v in result.items() if k != "draft"}
@@ -79,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     p_run = sub.add_parser("run", help="执行一次生成任务")
     p_run.add_argument("--skill", required=True)
     p_run.add_argument("--input", required=True, help="请求 JSON 路径")
+    p_run.add_argument("--output-dir", default=None, help="允许的输出目录（可选）")
     p_run.set_defaults(func=_cmd_run)
 
     p_val = sub.add_parser("validate", help="校验技能包契约与 index.json")

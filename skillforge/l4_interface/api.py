@@ -18,6 +18,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from skillforge.shared.paths import PathValidationError, ensure_parent, resolve_output_path
+
 
 class GenerateRequest(BaseModel):
     request: str = Field(..., description="用户原始请求，如“帮我写开题报告”")
@@ -211,19 +213,25 @@ def create_app(
         if llm is None:
             raise HTTPException(status_code=503, detail="LLM 未配置")
 
-        resolved_out: Path | None = None
+        safe_out: Path | None = None
         rel_out: str | None = None
+
         if req.out_path is not None:
             if allowed_root is None:
-                raise HTTPException(
-                    status_code=403,
-                    detail="服务端未启用文件输出（SKILLFORGE_OUTPUT_DIR 未配置）",
-                )
+                raise HTTPException(status_code=403, detail="服务端未启用文件输出")
             try:
-                resolved_out = _resolve_out_path(allowed_root, req.out_path)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            rel_out = resolved_out.relative_to(allowed_root.resolve()).as_posix()
+                safe_out = resolve_output_path(
+                    req.out_path,
+                    allowed_root,
+                    require_root=True,
+                )
+            except PathValidationError as exc:
+                raise HTTPException(status_code=400, detail="非法输出路径") from exc
+            if safe_out is None:
+                # req.out_path 非空时 resolve_output_path 不会返回 None，防御性兜底
+                raise HTTPException(status_code=400, detail="非法输出路径")
+            ensure_parent(safe_out)
+            rel_out = safe_out.relative_to(allowed_root.resolve()).as_posix()
 
         from skillforge.l3_orchestration.orchestrator import Orchestrator
         from skillforge.shared.errors import SkillNotFound
@@ -233,7 +241,7 @@ def create_app(
                 request=req.request,
                 collected=req.collected,
                 ask_fn=None,
-                out_path=resolved_out,
+                out_path=safe_out,
             )
         except SkillNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
