@@ -101,9 +101,24 @@ def _require(data: dict[str, Any], keys: set[str], section: str) -> None:
 def _validate_gates(gates: GatesConfig) -> None:
     cliche = gates.rules.get("cliche_check", {})
     phrases = cliche.get("phrases")
-    if phrases is not None:
-        if not isinstance(phrases, list) or not all(isinstance(p, str) for p in phrases):
-            raise ConfigError("gates.rules.cliche_check.phrases 必须是字符串列表")
+    if phrases is not None and (
+        not isinstance(phrases, list) or not all(isinstance(p, str) for p in phrases)
+    ):
+        raise ConfigError("gates.rules.cliche_check.phrases 必须是字符串列表")
+
+    sensitive = gates.rules.get("sensitive_check", {})
+    words = sensitive.get("words")
+    if words is not None and (
+        not isinstance(words, list) or not all(isinstance(w, str) for w in words)
+    ):
+        raise ConfigError("gates.rules.sensitive_check.words 必须是字符串列表")
+
+    placeholder = gates.rules.get("placeholder_check", {})
+    markers = placeholder.get("markers")
+    if markers is not None and (
+        not isinstance(markers, list) or not all(isinstance(m, str) for m in markers)
+    ):
+        raise ConfigError("gates.rules.placeholder_check.markers 必须是字符串列表")
 
 
 def load_config(root: Path | None = None) -> AppConfig:

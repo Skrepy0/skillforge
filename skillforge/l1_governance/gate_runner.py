@@ -32,7 +32,7 @@ class GateRunner:
 
         for rule_name, check_fn in RULES.items():
             cfg = self.config.rules.get(rule_name, {})
-            if not cfg.get("enabled", True):
+            if not cfg.get("enabled", False):
                 continue
             try:
                 results_by_rule[rule_name] = check_fn(draft, contract, session, cfg)
