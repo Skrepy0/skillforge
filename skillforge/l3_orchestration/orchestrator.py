@@ -10,6 +10,7 @@ from pathlib import Path
 from skillforge.l1_governance.gate_runner import GateRunner
 from skillforge.l2_capability.loader import Loader
 from skillforge.l2_capability.renderer.docx_renderer import DocxRenderer
+from skillforge.l2_capability.sanitize import filter_collected
 from skillforge.l3_orchestration.contract import missing_fields
 from skillforge.l3_orchestration.fallback import Fallback
 from skillforge.l3_orchestration.rewrite import Rewriter
@@ -60,14 +61,15 @@ class Orchestrator:
         contract = skill.contract
 
         session = self.sessions.create(decision.skill)
-        self.sessions.merge(session, collected or {})
+        self.sessions.merge(session, filter_collected(contract, collected or {}))
 
         # 阶段一：采集
         missing = missing_fields(contract, session.collected)
         if missing:
             if ask_fn is None:
                 return {**self.fallback.needs_input(missing), "session_id": session.session_id}
-            self.sessions.merge(session, self.fallback.ask(missing, ask_fn))
+            answers = self.fallback.ask(missing, ask_fn)
+            self.sessions.merge(session, filter_collected(contract, answers))
             missing = missing_fields(contract, session.collected)
             if missing:
                 return {**self.fallback.needs_input(missing), "session_id": session.session_id}
