@@ -1,10 +1,42 @@
 pass_threshold: 0.80
 rules:
-  format_check:
-    enabled: true
-    weight: 0.3
   cliche_check:
     enabled: true
-    weight: 0.2
+    weight: 0.25
     phrases:
-      - 敏感词
+      - 名列前茅
+      - 成绩优异
+      - 品学兼优
+      - 全面发展
+      - 积极向上
+      - 填补空白
+      - 国内领先
+      - 国际先进
+      - 显著提升
+      - 大幅提高
+  format_check:
+    enabled: true
+    weight: 0.25
+    default_word_count: 1800
+    tolerance: 0.10
+  repetition_check:
+    enabled: true
+    weight: 0.15
+    max_repeat: 2
+    max_ratio: 0.3
+  sensitive_check:
+    enabled: true
+    weight: 0.20
+    # 默认空词表：需按学校/赛事要求显式配置 words 才生效
+    words: []
+    severity: error
+  placeholder_check:
+    enabled: true
+    weight: 0.15
+    markers:
+      - TODO
+      - 待补充
+      - 待完善
+      - XXX
+      - 【】
+      - "[待填写]"
