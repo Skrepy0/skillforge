@@ -198,6 +198,17 @@ logger.info(
 
 必带 `trace_id`、`session_id`（若有）、`layer`。**禁止打印用户原文全文**，敏感字段需脱敏。**禁止在日志中记录 API key 原文**——限流 bucket 用 SHA-256 哈希，日志同理。
 
+### trace_id 与采样
+
+- **trace_id 贯通**：`Orchestrator.run` 在 `trace_id` 为空时自动生成 UUID；
+  CLI 的 `run_file` 显式生成并传入；API 从 `X-Trace-Id` 头读取（头名可经
+  `config/logging.yaml` 的 `trace_header` 修改）。
+- **所有 L1/L3 日志必带 `trace_id` 和 `layer`**，`session_id` 在会话创建后带上。
+- **采样**：`config/logging.yaml` 的 `sample_rate < 1.0` 时按比例采样，
+  `0.0` 全丢。生产环境如需降噪可设为 `0.1` 等；本地开发保持 `1.0`。
+- **不要把敏感值放进 `extra`**：`JsonFormatter` 会原样输出所有 extra 字段，
+  API key、用户原文等敏感信息必须先脱敏或改走哈希。
+
 ### 安全相关约定
 
 - **不信任外部输入**：`index.json` 的 `path`、API 的 `out_path`、用户 `collected`、门禁 `evidence` 都要经过校验/清洗。

@@ -159,6 +159,13 @@ def create_app(
     """
     from fastapi import Depends, FastAPI, Header, HTTPException, Request
 
+    from skillforge.shared.config import load_config
+
+    try:
+        trace_header = load_config().logging.trace_header
+    except Exception:
+        trace_header = "X-Trace-Id"
+
     resolved_key = api_key if api_key is not None else os.getenv("SKILLFORGE_API_KEY")
     if resolved_key is not None and not resolved_key.strip():
         resolved_key = None
@@ -210,7 +217,7 @@ def create_app(
         response_model=GenerateResponse,
         dependencies=[Depends(check_ready), Depends(rate_limit), Depends(require_api_key)],
     )
-    def generate(req: GenerateRequest) -> GenerateResponse:
+    def generate(req: GenerateRequest, request: Request) -> GenerateResponse:
         if llm is None:
             raise HTTPException(status_code=503, detail="LLM 未配置")
 
@@ -238,11 +245,13 @@ def create_app(
         from skillforge.shared.errors import SkillNotFound
 
         try:
+            trace_id = request.headers.get(trace_header, "")
             result = Orchestrator.from_config(llm=llm).run(
                 request=req.request,
                 collected=req.collected,
                 ask_fn=None,
                 out_path=safe_out,
+                trace_id=trace_id,
             )
         except SkillNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

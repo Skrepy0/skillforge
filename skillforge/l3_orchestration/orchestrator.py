@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from skillforge.l3_orchestration.state_machine import StateMachine
 from skillforge.l3_orchestration.task_queue import LLMClient, TaskQueue
 from skillforge.shared.config import AppConfig, load_config
 from skillforge.shared.errors import RenderError
+from skillforge.shared.logger import get_logger
 from skillforge.shared.types import DraftDocument
 
 
@@ -31,6 +33,7 @@ class _MissingLLM:
 class Orchestrator:
     def __init__(self, config: AppConfig, llm: LLMClient) -> None:
         self.config = config
+        self.logger = get_logger("skillforge.l3", config.logging)
         self.loader = Loader(config.skills_root)
         self.router = Router(config.routing)
         self.sessions = SessionManager()
@@ -53,8 +56,30 @@ class Orchestrator:
         out_path: Path | None = None,
         trace_id: str = "",
     ) -> dict:
+        if not trace_id:
+            trace_id = uuid.uuid4().hex
+
         decision = self.router.route(request)
+        self.logger.info(
+            "route.decided",
+            extra={
+                "trace_id": trace_id,
+                "layer": "l3",
+                "skill": decision.skill,
+                "confidence": decision.confidence,
+                "candidates": len(decision.candidates),
+            },
+        )
+
         if decision.needs_clarification or decision.skill is None:
+            self.logger.info(
+                "route.clarify",
+                extra={
+                    "trace_id": trace_id,
+                    "layer": "l3",
+                    "candidates": [name for name, _ in decision.candidates],
+                },
+            )
             return self.fallback.clarify(decision)
 
         skill = self.loader.load(decision.skill)
@@ -63,24 +88,69 @@ class Orchestrator:
         session = self.sessions.create(decision.skill)
         self.sessions.merge(session, filter_collected(contract, collected or {}))
 
-        # 阶段一：采集
         missing = missing_fields(contract, session.collected)
         if missing:
             if ask_fn is None:
+                self.logger.info(
+                    "collect.missing",
+                    extra={
+                        "trace_id": trace_id,
+                        "session_id": session.session_id,
+                        "layer": "l3",
+                        "missing": missing,
+                    },
+                )
                 return {**self.fallback.needs_input(missing), "session_id": session.session_id}
+
+            self.logger.info(
+                "collect.missing",
+                extra={
+                    "trace_id": trace_id,
+                    "session_id": session.session_id,
+                    "layer": "l3",
+                    "missing": missing,
+                    "interactive": True,
+                },
+            )
             answers = self.fallback.ask(missing, ask_fn)
             self.sessions.merge(session, filter_collected(contract, answers))
             missing = missing_fields(contract, session.collected)
             if missing:
+                self.logger.info(
+                    "collect.missing",
+                    extra={
+                        "trace_id": trace_id,
+                        "session_id": session.session_id,
+                        "layer": "l3",
+                        "missing": missing,
+                        "after_ask": True,
+                    },
+                )
                 return {**self.fallback.needs_input(missing), "session_id": session.session_id}
 
         self.fsm.transition(session, "info_ready")
+        self.logger.info(
+            "generate.start",
+            extra={
+                "trace_id": trace_id,
+                "session_id": session.session_id,
+                "layer": "l3",
+                "sections": len(contract.sections),
+            },
+        )
 
-        # 阶段二：分章生成
         self.sessions.set_drafts(session, self.queue.generate_all(skill, session.collected))
         self.fsm.transition(session, "generate_done")
+        self.logger.info(
+            "generate.done",
+            extra={
+                "trace_id": trace_id,
+                "session_id": session.session_id,
+                "layer": "l3",
+                "drafts": len(session.drafts),
+            },
+        )
 
-        # 阶段三：门禁 + 定向重写
         while True:
             draft = DraftDocument(
                 title=session.collected.get("title", contract.name),
@@ -90,13 +160,34 @@ class Orchestrator:
             result = self.gates.run(draft, contract, session, trace_id)
             session.gate_history.append(result)
 
+            self.logger.info(
+                "gate.round",
+                extra={
+                    "trace_id": trace_id,
+                    "session_id": session.session_id,
+                    "layer": "l3",
+                    "rewrite_rounds": session.rewrite_rounds,
+                    "passed": result.passed,
+                    "score": result.score,
+                },
+            )
+
             if result.passed:
                 self.fsm.transition(session, "gate_pass")
                 out = None
-                if contract.output == "docx" and out_path:
+                if contract.output == "docx" and out_path is not None:
                     safe = self._validate_render_target(Path(out_path))
                     safe.parent.mkdir(parents=True, exist_ok=True)
                     out = self.renderer.render(draft, safe)
+                self.logger.info(
+                    "run.delivered",
+                    extra={
+                        "trace_id": trace_id,
+                        "session_id": session.session_id,
+                        "layer": "l3",
+                        "has_output": out is not None,
+                    },
+                )
                 return {
                     "status": "delivered",
                     "session_id": session.session_id,
@@ -108,9 +199,30 @@ class Orchestrator:
 
             if session.rewrite_rounds >= self.config.settings.max_rewrite_rounds:
                 self.fsm.transition(session, "gate_fail_limit")
+                self.logger.warning(
+                    "run.fallback",
+                    extra={
+                        "trace_id": trace_id,
+                        "session_id": session.session_id,
+                        "layer": "l3",
+                        "rewrite_rounds": session.rewrite_rounds,
+                        "rules_failed": sorted({f.rule for f in result.failures}),
+                    },
+                )
                 return {**self.fallback.template(session, result), "session_id": session.session_id}
 
             self.fsm.transition(session, "gate_fail")
+            self.logger.info(
+                "rewrite.round",
+                extra={
+                    "trace_id": trace_id,
+                    "session_id": session.session_id,
+                    "layer": "l3",
+                    "rules_failed": sorted(
+                        {f.rule for f in result.failures if f.severity == "error"}
+                    ),
+                },
+            )
             self.sessions.set_drafts(
                 session,
                 self.rewriter.apply(session.drafts, result, skill, session.collected),
@@ -121,10 +233,13 @@ class Orchestrator:
     def run_file(self, skill: str, input_path: str) -> int:
         """CLI 入口：从 JSON 读请求与已采集字段，结果写回同目录。"""
         payload = json.loads(Path(input_path).read_text(encoding="utf-8-sig"))
+        raw_out = payload.get("out_path") or "output.docx"
+        trace_id = uuid.uuid4().hex
         result = self.run(
             request=payload.get("request", skill),
             collected=payload.get("collected", {}),
-            out_path=Path(payload.get("out_path", "output.docx")),
+            out_path=Path(raw_out),
+            trace_id=trace_id,
         )
         print(
             json.dumps(

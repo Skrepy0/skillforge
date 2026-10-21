@@ -1,4 +1,5 @@
 from skillforge.l3_orchestration.orchestrator import Orchestrator
+from skillforge.shared.types import GateResult
 
 
 class _CapturingLLM:
@@ -44,7 +45,7 @@ def test_orchestrator_drops_unknown_collected(monkeypatch):
     assert "合法题目" in joined
 
 
-def _always_pass():
+def _always_pass() -> GateResult:
     from skillforge.shared.types import GateResult
 
-    return GateResult(passed=True, score=1.0, threshold=0.8, failures=[])
+    return GateResult(passed=True, score=1.0, threshold=0.8)

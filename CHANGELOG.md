@@ -3,9 +3,9 @@
 本文件格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## \[Unreleased]
 
-## [0.1.0] - 2026-10-21
+## \[0.1.0] - 2026-10-21
 
 首个可用版本：四层引擎、五个门禁规则、三个技能包，以及一轮安全加固。
 
@@ -69,6 +69,12 @@
 - 新增 mypy 类型检查任务 `poe typecheck`，并入 `poe check` 检查链
 - `[dependency-groups] dev` 新增 `mypy>=1.10`
 - `[tool.mypy]` 配置：`strict = false` 起步、`ignore_missing_imports = true` 兼容 `[api]` extra 的可选依赖
+- 编排层接入结构化日志：`route.decided` / `route.clarify` / `collect.missing` /
+  `generate.start` / `generate.done` / `gate.round` / `rewrite.round` /
+  `run.delivered` / `run.fallback`，统一携带 `trace_id`、`session_id`、`layer`
+- `Orchestrator.run` 在 `trace_id` 为空时自动生成 UUID；`run_file` 显式生成并传入
+- API `/generate` 从 `config.logging.trace_header`（默认 `X-Trace-Id`）读取请求头作为 trace_id
+- `get_logger` 支持 `sample_rate < 1.0` 的采样（`0.0` 全丢，仅测试用）
 
 #### Changed
 
@@ -91,6 +97,10 @@
 - `api.py` 的 `create_app(llm=...)` 补 `LLMClient | None` 类型标注
 - `state_machine.py` 用 `allowed is None` 替代 `not allowed`，消除 Optional 收窄歧义
 - `llm_client.py` 移除多余的 `# type: ignore[import-not-found]`（`ignore_missing_imports` 已覆盖）
+- `JsonFormatter` 之前只输出硬编码的 `trace_id` / `session_id` / `layer`，
+  `observability.log_gate_result` 传入的 `passed`、`score`、`rules_failed`
+  等业务字段被静默丢弃；改为输出所有 extra 字段（logging 标准属性除外），
+  值为 `None` 的字段跳过
 
 #### Security
 
@@ -123,7 +133,7 @@
 - 基础设施：`test_config`（加载 / 缺字段 / 非映射 / 环境变量覆盖 / `_validate_gates`）、`test_registry`
 - 集成：`test_gate_flow`、`test_format_gate_flow`、`test_cliche_gate_flow`
 
-## [0.0.1] - 2026-10-20
+## \[0.0.1] - 2026-10-20
 
 ### 引擎
 
