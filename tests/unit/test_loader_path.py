@@ -169,3 +169,34 @@ def test_rejects_invalid_output(tmp_path: Path):
     _write_index(tmp_path, "skill-a/SKILL.md", name="skill-a")
     with pytest.raises(ContractViolation, match="output 非法"):
         Loader(tmp_path).load("skill-a")
+
+
+def test_template_rejects_absolute(tmp_path: Path):
+    _write_skill(tmp_path, "skill-a/SKILL.md", name="skill-a", output="pptx")
+    # 手动改 frontmatter 加绝对 template
+    p = tmp_path / "skill-a" / "SKILL.md"
+    p.write_text(
+        p.read_text(encoding="utf-8").replace(
+            "output: pptx",
+            "output: pptx\n  template: /abs/t.pptx",
+        ),
+        encoding="utf-8",
+    )
+    _write_index(tmp_path, "skill-a/SKILL.md", name="skill-a")
+    with pytest.raises(ContractViolation, match="template 路径非法"):
+        Loader(tmp_path).load("skill-a")
+
+
+def test_template_rejects_parent_escape(tmp_path: Path):
+    _write_skill(tmp_path, "skill-a/SKILL.md", name="skill-a", output="pptx")
+    p = tmp_path / "skill-a" / "SKILL.md"
+    p.write_text(
+        p.read_text(encoding="utf-8").replace(
+            "output: pptx",
+            "output: pptx\n  template: ../escape.pptx",
+        ),
+        encoding="utf-8",
+    )
+    _write_index(tmp_path, "skill-a/SKILL.md", name="skill-a")
+    with pytest.raises(ContractViolation, match="template 路径非法"):
+        Loader(tmp_path).load("skill-a")

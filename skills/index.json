@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "skills": [
     {
+      "name": "hnu-digital-circuit-seminar-ppt",
+      "category": "hnu",
+      "path": "subskills/hnu-digital-circuit-seminar-ppt/SKILL.md",
+      "triggers": ["HNU数字电路小班课", "HNU数电讨论"],
+      "description": "湖南大学数字电路小班课PPT制作与演示技能：覆盖Quartus II工程配置、功能/时序仿真、原理图与HDL对比、引脚分配与下载、IP核调用及典型报错排错6类讨论题，内置湖大校门/罗马柱底纹模板，支持截图红框标注、代码高亮、波形对比排版，并提供10分钟讲解+3分钟问答的演示脚本指导。"
+    },
+    {
       "name": "test-skill",
       "category": "dev",
       "path": "subskills/test-skill/SKILL.md",

@@ -33,6 +33,8 @@ class SkillContract:
     sections: list[str]
     gates: dict[str, float] = field(default_factory=dict)
     version: str = "0.1.0"
+    template: str | None = None
+    pptx_layouts: dict[str, str | int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

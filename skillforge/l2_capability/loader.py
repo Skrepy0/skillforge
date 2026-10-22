@@ -105,7 +105,26 @@ def _build_contract(fm: dict, path: Path) -> SkillContract:
     sections = meta.get("sections")
     if not isinstance(sections, list) or not sections:
         raise ContractViolation(f"{path.name} sections 必须是非空列表")
-
+    template = meta.get("template")
+    if template is not None:
+        if not isinstance(template, str) or not template.strip():
+            raise ContractViolation(f"{path.name} template 必须是非空字符串")
+        template = template.strip()
+        p = Path(template)
+        if p.is_absolute() or template.startswith(("/", "\\")) or ".." in p.parts:
+            raise ContractViolation(f"{path.name} template 路径非法")
+        if p.suffix.lower() != ".pptx":
+            raise ContractViolation(f"{path.name} template 必须是 .pptx")
+    raw_layouts = meta.get("pptx_layouts") or {}
+    if not isinstance(raw_layouts, dict):
+        raise ContractViolation(f"{path.name} pptx_layouts 必须是映射")
+    pptx_layouts: dict[str, str | int] = {}
+    for key, value in raw_layouts.items():
+        if key not in ("title", "content"):
+            raise ContractViolation(f"{path.name} pptx_layouts 未知键: {key}")
+        if not isinstance(value, (str, int)):
+            raise ContractViolation(f"{path.name} pptx_layouts.{key} 必须是字符串或整数")
+        pptx_layouts[key] = value
     return SkillContract(
         name=str(fm.get("name", "")),
         description=str(fm.get("description", "")),
@@ -114,6 +133,8 @@ def _build_contract(fm: dict, path: Path) -> SkillContract:
         sections=[str(s) for s in sections],
         gates=dict(meta.get("gates") or {}),
         version=str(meta.get("version", "0.1.0")),
+        template=template,
+        pptx_layouts=pptx_layouts,
     )
 
 

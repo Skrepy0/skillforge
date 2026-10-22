@@ -24,7 +24,7 @@ from skillforge.l3_orchestration.task_queue import LLMClient, TaskQueue
 from skillforge.shared.config import AppConfig, load_config
 from skillforge.shared.errors import RenderError
 from skillforge.shared.logger import get_logger
-from skillforge.shared.types import DraftDocument
+from skillforge.shared.types import DraftDocument, SkillContract
 
 
 class _MissingLLM:
@@ -54,7 +54,7 @@ class Orchestrator:
         self.rewriter = Rewriter(llm)
         self.gates = GateRunner(config.gates)
         self.renderer: RendererProtocol = DocxRenderer()
-        self.pptx_renderer: RendererProtocol = PptxRenderer()
+        self.pptx_renderer: PptxRenderer = PptxRenderer()
         self.fallback = Fallback()
 
     @classmethod
@@ -192,8 +192,17 @@ class Orchestrator:
                     expected = f".{contract.output}"
                     safe = self._validate_render_target(Path(out_path), expected)
                     safe.parent.mkdir(parents=True, exist_ok=True)
-                    renderer = self.renderer if contract.output == "docx" else self.pptx_renderer
-                    out = renderer.render(draft, safe)
+
+                    if contract.output == "docx":
+                        out = self.renderer.render(draft, safe)
+                    else:
+                        template = self._resolve_template(skill, contract)
+                        out = self.pptx_renderer.render(
+                            draft,
+                            safe,
+                            template=template,
+                            layouts=contract.pptx_layouts,
+                        )
                 self.logger.info(
                     "run.delivered",
                     extra={
@@ -285,3 +294,18 @@ class Orchestrator:
         except ValueError as exc:
             raise RenderError("输出路径越过允许目录") from exc
         return resolved
+
+    def _resolve_template(self, skill, contract: SkillContract) -> Path | None:
+        if not contract.template:
+            return None
+        # skill.instructions 不含路径，用 loader 的 skills_root 拼
+        base = self.loader.skills_root / "subskills" / contract.name
+        candidate = (base / contract.template).resolve()
+        root = self.loader.skills_root.resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as exc:
+            raise RenderError("模板路径越过技能包目录") from exc
+        if not candidate.exists():
+            raise RenderError(f"模板文件不存在: {contract.template}")
+        return candidate

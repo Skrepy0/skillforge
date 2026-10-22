@@ -148,3 +148,4 @@
 - `skillforge/shared/version.py` 作为版本单一来源
 - 四层目录骨架：`l1_governance/`、`l2_capability/`、`l3_orchestration/`、`l4_interface/`、`shared/`
 - `skills/` 目录骨架：`index.json`、`version.json`、`SKILL.md`、`subskills/`
+- 添加SKILL：`hnu-digital-circuit-seminar-ppt`

@@ -54,10 +54,10 @@ def _always_pass() -> GateResult:
 
 
 def test_orchestrator_pptx_output_dispatches_to_pptx_renderer(monkeypatch, tmp_path):
+    from skillforge.l2_capability.renderer.pptx_renderer import PptxRenderer
     from skillforge.l3_orchestration.orchestrator import Orchestrator
     from skillforge.shared.types import RouteDecision
 
-    # 本测试只关心渲染器分派，路径白名单由 test_loader_path / test_api_out_path 覆盖
     monkeypatch.setattr(Orchestrator, "_output_root", lambda self: None)
     monkeypatch.delenv("SKILLFORGE_OUTPUT_DIR", raising=False)
 
@@ -68,15 +68,15 @@ def test_orchestrator_pptx_output_dispatches_to_pptx_renderer(monkeypatch, tmp_p
             calls["docx"] += 1
             return Path(out_path)
 
-    class _SpyPptx:
-        def render(self, draft, out_path):
+    class _SpyPptx(PptxRenderer):
+        def render(self, draft, out_path, template=None, layouts=None):
             calls["pptx"] += 1
             return Path(out_path)
 
     llm = _CapturingLLM()
     orch = Orchestrator.from_config(llm=llm)
-    orch.renderer = _SpyDocx()
-    orch.pptx_renderer = _SpyPptx()
+    orch.renderer = _SpyDocx()  # 协议 2 参数，OK
+    orch.pptx_renderer = _SpyPptx()  # 继承 PptxRenderer，OK
 
     monkeypatch.setattr(
         orch.router,

@@ -84,3 +84,49 @@ def test_render_wraps_errors_as_render_error(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(pptx, "Presentation", _Broken)
     with pytest.raises(RenderError, match="pptx 渲染失败"):
         PptxRenderer().render(_draft(), tmp_path / "out.pptx")
+
+
+def test_render_with_custom_template(tmp_path: Path):
+    from pptx import Presentation
+
+    # 造一个只有 2 个布局的最小模板
+    template = tmp_path / "template.pptx"
+    prs = Presentation()
+    prs.save(str(template))
+
+    draft = DraftDocument("T", [{"heading": "H", "body": "a\nb"}], output="pptx")
+    out = PptxRenderer().render(
+        draft,
+        tmp_path / "out.pptx",
+        template=template,
+        layouts={"title": "Title Slide", "content": "Title and Content"},
+    )
+    assert out.exists()
+    assert len(Presentation(str(out)).slides) == 2
+
+
+def test_render_falls_back_when_layout_name_missing(tmp_path: Path):
+    from pptx import Presentation
+
+    template = tmp_path / "template.pptx"
+    Presentation().save(str(template))
+
+    draft = DraftDocument("T", [{"heading": "H", "body": "a"}], output="pptx")
+    # 布局名不存在，回退索引，不抛异常
+    out = PptxRenderer().render(
+        draft,
+        tmp_path / "out.pptx",
+        template=template,
+        layouts={"title": "NoSuchLayout", "content": "AlsoMissing"},
+    )
+    assert out.exists()
+
+
+def test_render_missing_template_raises(tmp_path: Path):
+    draft = DraftDocument("T", [], output="pptx")
+    with pytest.raises(RenderError, match="pptx 渲染失败"):
+        PptxRenderer().render(
+            draft,
+            tmp_path / "out.pptx",
+            template=tmp_path / "nope.pptx",
+        )
