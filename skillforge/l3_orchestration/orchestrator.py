@@ -255,14 +255,29 @@ class Orchestrator:
             self.fsm.transition(session, "rewrite_done")
 
     def run_file(self, skill: str, input_path: str) -> int:
-        """CLI 入口：从 JSON 读请求与已采集字段，结果写回同目录。"""
+        """CLI 入口：从 JSON 读请求与已采集字段，结果写回同目录。
+
+        默认输出文件名按技能契约的 output 决定：
+        - docx → output.docx
+        - pptx → output.pptx
+        - markdown → 不落盘，只返回草稿
+        """
         payload = json.loads(Path(input_path).read_text(encoding="utf-8-sig"))
-        raw_out = payload.get("out_path") or "output.docx"
+
+        contract = self.loader.load_contract(skill)
+        raw_out = payload.get("out_path")
+        if raw_out:
+            out_path: Path | None = Path(raw_out)
+        elif contract.output in ("docx", "pptx"):
+            out_path = Path(f"output.{contract.output}")
+        else:
+            out_path = None  # markdown 不落盘
+
         trace_id = uuid.uuid4().hex
         result = self.run(
             request=payload.get("request", skill),
             collected=payload.get("collected", {}),
-            out_path=Path(raw_out),
+            out_path=out_path,
             trace_id=trace_id,
         )
         print(

@@ -103,6 +103,9 @@
   `observability.log_gate_result` 传入的 `passed`、`score`、`rules_failed`
   等业务字段被静默丢弃；改为输出所有 extra 字段（logging 标准属性除外），
   值为 `None` 的字段跳过
+- `orchestrator.run_file` 默认输出文件名按技能 `output` 决定：docx 技能用 `output.docx`，pptx 技能用 `output.pptx`，markdown 技能不落盘。之前固定 `output.docx` 导致 pptx 技能在后缀校验时抛 `RenderError`
+- 删除 `api.py` 中未被调用的 `_resolve_out_path`（`/generate` 实际使用 `shared/paths.py` 的 `resolve_output_path`）
+- `GenerateRequest.out_path` 描述更新为支持 `.docx` / `.pptx`
 
 #### Security
 
@@ -134,6 +137,7 @@
 - 接入层：`test_api_security`（鉴权 / 限流 / 401 / 429）、`test_api_out_path`（403 / 400 / 放行 / 不泄露绝对路径）、`test_llm_client_parse`、`test_cli`
 - 基础设施：`test_config`（加载 / 缺字段 / 非映射 / 环境变量覆盖 / `_validate_gates`）、`test_registry`
 - 集成：`test_gate_flow`、`test_format_gate_flow`、`test_cliche_gate_flow`
+- 新增 `test_orchestrator_run_file.py`：覆盖 pptx / docx / markdown 三种 `output` 的默认输出路径
 
 ## \[0.0.1] - 2026-10-20
 

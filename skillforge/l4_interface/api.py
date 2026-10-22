@@ -29,8 +29,9 @@ class GenerateRequest(BaseModel):
     out_path: str | None = Field(
         None,
         description=(
-            "docx 输出相对路径。仅在服务端通过 SKILLFORGE_OUTPUT_DIR "
-            "配置了输出目录时生效；否则请求会被拒绝。"
+            "输出相对路径（.docx 或 .pptx），需匹配技能声明的 output。"
+            "仅在服务端通过 SKILLFORGE_OUTPUT_DIR 配置了输出目录时生效；"
+            "未配置时携带此字段的请求返回 403。"
         ),
     )
 
@@ -80,29 +81,6 @@ class FixedWindowRateLimiter:
 def _hash_for_bucket(value: str) -> str:
     """不可逆哈希，用于限流 bucket；避免原始 key 进入任何持久结构。"""
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
-
-
-def _resolve_out_path(allowed_root: Path, raw: str) -> Path:
-    """校验并解析 out_path；非法时抛 ValueError，消息可直接返回给客户端。"""
-    candidate = raw.strip()
-    if not candidate:
-        raise ValueError("out_path 不能为空")
-
-    p = Path(candidate)
-    if p.is_absolute() or candidate.startswith(("/", "\\")):
-        raise ValueError("out_path 必须是相对路径")
-    if any(part == ".." for part in p.parts):
-        raise ValueError("out_path 不得包含 '..'")
-    if p.suffix.lower() != ".docx":
-        raise ValueError("out_path 必须以 .docx 结尾")
-
-    root_resolved = allowed_root.resolve()
-    resolved = (root_resolved / p).resolve()
-    try:
-        resolved.relative_to(root_resolved)
-    except ValueError as exc:
-        raise ValueError("out_path 越过允许的输出目录") from exc
-    return resolved
 
 
 def _parse_rate_limit(value: int | None) -> int:
