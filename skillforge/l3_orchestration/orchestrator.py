@@ -7,10 +7,12 @@ import os
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 from skillforge.l1_governance.gate_runner import GateRunner
 from skillforge.l2_capability.loader import Loader
 from skillforge.l2_capability.renderer.docx_renderer import DocxRenderer
+from skillforge.l2_capability.renderer.pptx_renderer import PptxRenderer
 from skillforge.l2_capability.sanitize import filter_collected
 from skillforge.l3_orchestration.contract import missing_fields
 from skillforge.l3_orchestration.fallback import Fallback
@@ -30,6 +32,16 @@ class _MissingLLM:
         raise NotImplementedError("未注入 LLMClient：请在 Orchestrator.from_config(llm=...) 传入")
 
 
+class RendererProtocol(Protocol):
+    """渲染器契约：把 DraftDocument 落盘为指定格式，返回输出路径。
+
+    DocxRenderer 和 PptxRenderer 在结构上满足此协议，不需要显式继承。
+    测试里的 spy 只要实现 render() 就能直接替换，不需要继承真实类。
+    """
+
+    def render(self, draft: DraftDocument, out_path: Path) -> Path: ...
+
+
 class Orchestrator:
     def __init__(self, config: AppConfig, llm: LLMClient) -> None:
         self.config = config
@@ -41,7 +53,8 @@ class Orchestrator:
         self.queue = TaskQueue(llm, config.settings.queue_concurrency)
         self.rewriter = Rewriter(llm)
         self.gates = GateRunner(config.gates)
-        self.renderer = DocxRenderer()
+        self.renderer: RendererProtocol = DocxRenderer()
+        self.pptx_renderer: RendererProtocol = PptxRenderer()
         self.fallback = Fallback()
 
     @classmethod
@@ -175,10 +188,12 @@ class Orchestrator:
             if result.passed:
                 self.fsm.transition(session, "gate_pass")
                 out = None
-                if contract.output == "docx" and out_path is not None:
-                    safe = self._validate_render_target(Path(out_path))
+                if out_path is not None and contract.output in ("docx", "pptx"):
+                    expected = f".{contract.output}"
+                    safe = self._validate_render_target(Path(out_path), expected)
                     safe.parent.mkdir(parents=True, exist_ok=True)
-                    out = self.renderer.render(draft, safe)
+                    renderer = self.renderer if contract.output == "docx" else self.pptx_renderer
+                    out = renderer.render(draft, safe)
                 self.logger.info(
                     "run.delivered",
                     extra={
@@ -258,9 +273,9 @@ class Orchestrator:
         p = Path(raw)
         return p if p.is_absolute() else self.config.root / p
 
-    def _validate_render_target(self, out_path: Path) -> Path:
-        if out_path.suffix.lower() != ".docx":
-            raise RenderError("输出路径必须以 .docx 结尾")
+    def _validate_render_target(self, out_path: Path, expected_suffix: str = ".docx") -> Path:
+        if out_path.suffix.lower() != expected_suffix:
+            raise RenderError(f"输出路径必须以 {expected_suffix} 结尾")
         root = self._output_root()
         if root is None:
             return out_path

@@ -1,12 +1,12 @@
 # SkillForge
 
-垂直领域 AI 技能包的编排与治理运行时：路由匹配技能 → 契约驱动追问 → 分章生成 → 门禁质检 → 定向重写 → 导出 docx。
+垂直领域 AI 技能包的编排与治理运行时：路由匹配技能 → 契约驱动追问 → 分章生成 → 门禁质检 → 定向重写 → 导出 markdown / docx / pptx。
 
 技能包以数据形式声明，生成结果必须过独立门禁，**不编造事实**是这个项目的底线。它不试图"一键生成完美文书"，而是把"缺什么信息、哪里不合格、该改哪一章"显式暴露出来，让人做最后判断。
 
 ## 特性
 
-- **技能包即数据**：技能以 `skills/subskills/<name>/SKILL.md`（YAML frontmatter + 正文）声明，`skills/index.json` 注册，不含可执行代码。引擎不会动态执行 `skills/` 下的任何 `.py`。
+- **技能包即数据**：技能以 `skills/subskills/<name>/SKILL.md`（YAML frontmatter + 正文）声明，`skills/index.json` 注册，不含可执行代码。`output` 支持 `markdown` / `docx` / `pptx` 三种形态。
 - **四层引擎**：L4 接入 → L3 编排 → L2 能力 → L1 门禁，单向依赖，`shared/` 提供跨层契约。
 - **独立门禁**：5 条规则（`cliche_check` 套话 / `format_check` 格式 / `repetition_check` 重复 / `sensitive_check` 敏感词 / `placeholder_check` 占位符）独立于生成器质检草稿，按权重打分，只对 error 级问题定向重写失败章节。
 - **三类宿主**：CLI（`skillforge run`）、FastAPI（`POST /generate`）、Agent 宿主纯函数接口（`agent_host.handle`）。
@@ -123,7 +123,7 @@ uv run skillforge run --skill test-skill --input input.json --output-dir ./out
 | :---------- | :--------------- | :---------------------------------------------------------- |
 | `request`   | `str`            | 用户原始请求，路由据此匹配技能                              |
 | `collected` | `dict[str, str]` | 已采集字段，**只保留目标技能 `required_fields` 中声明的键** |
-| `out_path`  | `str \| null`    | docx 输出相对路径；省略或为 `null` 时只返回草稿，不落盘     |
+| `out_path`  | `str \| null`    | 输出相对路径；`.docx` 或 `.pptx`，需匹配技能声明的 `output`。省略或为 `null` 时只返回草稿，不落盘 |
 
 `collected` 的字段由目标技能的 `required_fields` 决定，**契约外字段会被白名单过滤丢弃**。用 `uv run skillforge skills list` 查看已注册技能，或直接读对应 `SKILL.md` 的 `required_fields`。
 
@@ -226,7 +226,7 @@ if result["status"] == "needs_input":
 ```text
 skillforge/
 ├── l1_governance/    # 门禁规则 + 打分（GateRunner / scoring / observability）
-├── l2_capability/    # 技能加载、prompt 组装、sanitize、docx 渲染
+├── l2_capability/    # 技能加载、prompt 组装、sanitize、docx/pptx 渲染
 ├── l3_orchestration/ # 路由、状态机、并发生成、重写、降级
 ├── l4_interface/     # CLI / FastAPI / Agent 宿主 / LLM 客户端
 └── shared/           # 契约类型、配置、错误、日志、路径校验

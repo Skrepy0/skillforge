@@ -85,6 +85,7 @@
 - `_validate_gates` 扩展校验 `sensitive_check.words` 与 `placeholder_check.markers` 类型
 - `requires-python` 从 `>=3.10` 收紧到 `>=3.11`，与 `.python-version`、Ruff `target-version` 对齐
 - 添加`python-dotenv`，支持读取`.env`文件
+- 添加对`pptx`格式的文档的支持
 
 #### Fixed
 

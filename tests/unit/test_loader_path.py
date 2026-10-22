@@ -12,12 +12,12 @@ from skillforge.l2_capability.registry import validate_all
 from skillforge.shared.errors import ContractViolation
 
 
-def _write_skill(root: Path, rel_path: str, name: str) -> Path:
+def _write_skill(root: Path, rel_path: str, name: str, output: str = "markdown") -> Path:
     target = root / rel_path
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
         f"---\nname: {name}\ndescription: test\nmetadata:\n"
-        f"  required_fields: [x]\n  output: markdown\n  sections: [A]\n---\n\n# Body\n",
+        f"  required_fields: [x]\n  output: {output}\n  sections: [A]\n---\n\n# Body\n",
         encoding="utf-8",
     )
     return target
@@ -155,3 +155,17 @@ def test_validate_accepts_normal_entry(tmp_path: Path):
     ok, messages = validate_all(tmp_path)
     assert ok
     assert any("[OK]" in m and "skill-a" in m for m in messages)
+
+
+def test_accepts_pptx_output(tmp_path: Path):
+    _write_skill(tmp_path, "skill-a/SKILL.md", name="skill-a", output="pptx")
+    _write_index(tmp_path, "skill-a/SKILL.md", name="skill-a")
+    loaded = Loader(tmp_path).load("skill-a")
+    assert loaded.contract.output == "pptx"
+
+
+def test_rejects_invalid_output(tmp_path: Path):
+    _write_skill(tmp_path, "skill-a/SKILL.md", name="skill-a", output="pdf")
+    _write_index(tmp_path, "skill-a/SKILL.md", name="skill-a")
+    with pytest.raises(ContractViolation, match="output 非法"):
+        Loader(tmp_path).load("skill-a")

@@ -11,7 +11,7 @@ from skillforge.shared.errors import ContractViolation, SkillNotFound
 from skillforge.shared.types import SkillContract
 
 REQUIRED_META = {"required_fields", "output", "sections"}
-VALID_OUTPUT = {"markdown", "docx"}
+VALID_OUTPUT = {"markdown", "docx", "pptx"}
 
 
 def _resolve_entry_path(skills_root: Path, raw: object, name: str) -> Path:

@@ -29,7 +29,7 @@ class SkillContract:
     name: str
     description: str
     required_fields: list[str]
-    output: Literal["markdown", "docx"]
+    output: Literal["markdown", "docx", "pptx"]
     sections: list[str]
     gates: dict[str, float] = field(default_factory=dict)
     version: str = "0.1.0"
@@ -66,4 +66,4 @@ class SessionState:
 class DraftDocument:
     title: str
     sections: list[dict[str, str]]
-    output: Literal["markdown", "docx"] = "markdown"
+    output: Literal["markdown", "docx", "pptx"] = "markdown"

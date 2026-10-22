@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 MAX_PATH_DEPTH = 3
-_ALLOWED_SUFFIX = ".docx"
+_ALLOWED_SUFFIXES = (".docx", ".pptx")
 _SAFE_MESSAGE = "非法输出路径"
 
 
@@ -37,7 +37,7 @@ def resolve_output_path(
         raise PathValidationError(_SAFE_MESSAGE)
 
     p = Path(text)
-    if p.suffix.lower() != _ALLOWED_SUFFIX:
+    if p.suffix.lower() not in _ALLOWED_SUFFIXES:
         raise PathValidationError(_SAFE_MESSAGE)
     if any(part == ".." for part in p.parts):
         raise PathValidationError(_SAFE_MESSAGE)
