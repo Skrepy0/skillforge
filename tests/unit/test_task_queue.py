@@ -57,3 +57,34 @@ def test_concurrency_clamped_to_one(bad):
 def test_generate_all_returns_all_sections():
     out = TaskQueue(_Plain(), concurrency=2).generate_all(_skill(["A", "B", "C"]), {})
     assert set(out) == {"A", "B", "C"}
+
+
+@pytest.mark.parametrize("system", [False, True])
+def test_client_failure_normalized(system):
+    from skillforge.shared.errors import LLMError
+
+    class Broken:
+        def complete(self, prompt):
+            raise RuntimeError("provider failed")
+
+    class BrokenSystem(Broken):
+        def complete_system(self, system, user):
+            raise RuntimeError("provider failed")
+
+    with pytest.raises(LLMError) as caught:
+        TaskQueue(BrokenSystem() if system else Broken()).generate_all(_skill(), {})
+    assert isinstance(caught.value.__cause__, RuntimeError)
+
+
+def test_classified_error_preserved():
+    from skillforge.shared.errors import LLMError
+
+    exc = LLMError("failed")
+
+    class Broken:
+        def complete(self, prompt):
+            raise exc
+
+    with pytest.raises(LLMError) as caught:
+        TaskQueue(Broken()).generate_all(_skill(), {})
+    assert caught.value is exc

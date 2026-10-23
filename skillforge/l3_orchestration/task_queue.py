@@ -15,6 +15,7 @@ from skillforge.l2_capability.prompt_builder import (
     build_system_prompt,
     build_user_prompt,
 )
+from skillforge.shared.errors import LLMError, SkillForgeError
 
 
 class LLMClient(Protocol):
@@ -34,9 +35,14 @@ class TaskQueue:
     def _call(self, section: str, skill: LoadedSkill, collected: dict[str, str]) -> str:
         system = build_system_prompt()
         user = build_user_prompt(skill, section, collected)
-        if isinstance(self.llm, SystemPromptLLMClient):
-            return self.llm.complete_system(system, user).strip()
-        return self.llm.complete(system + "\n\n" + user).strip()
+        try:
+            if isinstance(self.llm, SystemPromptLLMClient):
+                return self.llm.complete_system(system, user).strip()
+            return self.llm.complete(system + "\n\n" + user).strip()
+        except SkillForgeError:
+            raise
+        except Exception as exc:
+            raise LLMError("章节 LLM 调用失败") from exc
 
     def generate_all(self, skill: LoadedSkill, collected: dict[str, str]) -> dict[str, str]:
         sections = skill.contract.sections

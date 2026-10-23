@@ -27,3 +27,7 @@ class GateRejected(SkillForgeError):
 
 class RenderError(SkillForgeError):
     """渲染（docx 等）失败。"""
+
+
+class LLMError(SkillForgeError):
+    """LLM 调用失败或返回空内容。"""

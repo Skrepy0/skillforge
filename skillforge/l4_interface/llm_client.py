@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import math
 import os
+import time
 
-from skillforge.shared.errors import SkillForgeError
+from skillforge.shared.errors import ConfigError, LLMError, SkillForgeError
 
 
 class OpenAICompatibleClient:
@@ -16,9 +18,15 @@ class OpenAICompatibleClient:
         api_key: str | None = None,
         base_url: str | None = None,
         timeout: float = 120.0,
+        max_retries: int = 3,
+        backoff_base: float = 1.0,
     ) -> None:
         from skillforge.shared.config import load_project_dotenv
 
+        if max_retries < 0 or not math.isfinite(backoff_base) or backoff_base < 0:
+            raise ConfigError("max_retries 和 backoff_base 必须非负，退避时间必须有限")
+        self.max_retries = max_retries
+        self.backoff_base = backoff_base
         load_project_dotenv()
         try:
             from openai import OpenAI
@@ -38,15 +46,33 @@ class OpenAICompatibleClient:
             api_key=key,
             base_url=base_url or os.getenv("OPENAI_BASE_URL"),
             timeout=timeout,
+            max_retries=0,  # 重试由本层统一控制，避免 SDK 重试叠加。
         )
 
     def complete(self, prompt: str) -> str:
-        resp = self._client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-        )
-        content = resp.choices[0].message.content
-        if not content:
-            raise SkillForgeError("模型返回空内容")
-        return content
+        """首次调用失败后最多重试 max_retries 次，按基数指数退避。"""
+        from openai import APIConnectionError, APIError, APIStatusError, RateLimitError
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.3,
+                )
+            except APIError as exc:
+                # APITimeoutError 继承 APIConnectionError。
+                retryable = isinstance(exc, (APIConnectionError, RateLimitError)) or (
+                    isinstance(exc, APIStatusError)
+                    and (exc.status_code == 429 or 500 <= exc.status_code < 600)
+                )
+                if not retryable or attempt == self.max_retries:
+                    # 不包含 SDK 错误正文、请求或 URL，避免泄露凭据。
+                    raise LLMError("LLM 调用失败：不可重试或重试次数已耗尽") from exc
+                time.sleep(self.backoff_base * 2**attempt)
+                continue
+            content = resp.choices[0].message.content if resp.choices else None
+            if not content or not content.strip():
+                raise LLMError("模型返回空内容")
+            return content
+        raise LLMError("LLM 调用失败")  # 防御性保护
