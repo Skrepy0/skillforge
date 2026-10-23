@@ -48,11 +48,22 @@ class GenerateResponse(BaseModel):
 
 
 class FixedWindowRateLimiter:
-    """per-key 固定窗口内存限流器。线程安全；limit=0 时禁用。"""
+    """per-key 固定窗口内存限流器。线程安全；limit=0 时禁用。
 
-    def __init__(self, limit_per_minute: int, window_seconds: float = 60.0) -> None:
+    仅在单进程内有效；多 worker/多实例各进程独立计数，限流不共享。
+    如需跨实例限流，应使用 Redis 等外部共享存储。
+    """
+
+    def __init__(
+        self,
+        limit_per_minute: int,
+        window_seconds: float = 60.0,
+        sweep_interval: float | None = None,
+    ) -> None:
         self.limit = max(0, int(limit_per_minute))
         self.window = window_seconds
+        self.sweep_interval = window_seconds if sweep_interval is None else sweep_interval
+        self._last_sweep = 0.0
         self._buckets: dict[str, tuple[float, int]] = {}
         self._lock = threading.Lock()
 
@@ -65,13 +76,22 @@ class FixedWindowRateLimiter:
         if not self.enabled:
             return True, 0
 
-        now = time.monotonic()
         with self._lock:
+            now = time.monotonic()
             window_start, count = self._buckets.get(key, (now, 0))
             if now - window_start >= self.window:
                 window_start, count = now, 0
             count += 1
             self._buckets[key] = (window_start, count)
+            if now - self._last_sweep >= self.sweep_interval:
+                expired = [
+                    bucket_key
+                    for bucket_key, (start, _) in self._buckets.items()
+                    if now - start >= self.window
+                ]
+                for bucket_key in expired:
+                    del self._buckets[bucket_key]
+                self._last_sweep = now
             if count <= self.limit:
                 return True, 0
             retry_after = max(1, int(self.window - (now - window_start)))
