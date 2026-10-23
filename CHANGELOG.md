@@ -5,6 +5,8 @@
 
 ## \[Unreleased]
 
+- `OpenAICompatibleClient` 新增 `complete_system` 实现，修复文档与实现不一致；与 `complete` 共用重试与结果校验逻辑。
+
 ### Added
 
 - LLM 调用新增可配置指数退避重试（默认最多重试 3 次），覆盖超时、限流、连接错误与 5xx；禁用 SDK 内置重试以避免叠加。

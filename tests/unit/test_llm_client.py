@@ -2,8 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from skillforge.l3_orchestration.task_queue import SystemPromptLLMClient
 from skillforge.l4_interface.llm_client import OpenAICompatibleClient
-from skillforge.shared.errors import LLMError
+from skillforge.shared.errors import LLMError, SkillForgeError
 
 openai = pytest.importorskip("openai")
 httpx = pytest.importorskip("httpx")
@@ -80,9 +81,38 @@ def test_no_retry(client, monkeypatch, kind):
 @pytest.mark.parametrize(
     "result", [response(None), response(""), response("  "), response(empty=True)]
 )
-def test_empty_content(client, monkeypatch, result):
+@pytest.mark.parametrize("system", [False, True])
+def test_empty_content(client, monkeypatch, result, system):
     llm, sleep = client
     monkeypatch.setattr(llm._client.chat.completions, "create", Mock(return_value=result))
-    with pytest.raises(LLMError, match="空内容"):
-        llm.complete("prompt")
+    with pytest.raises(SkillForgeError, match="模型返回空内容"):
+        if system:
+            llm.complete_system("system", "prompt")
+        else:
+            llm.complete("prompt")
     sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("system", [False, True])
+def test_messages_and_result(client, monkeypatch, system):
+    llm, _ = client
+    create = Mock(return_value=response(" content "))
+    monkeypatch.setattr(llm._client.chat.completions, "create", create)
+    assert isinstance(llm, SystemPromptLLMClient)
+    if system:
+        assert llm.complete_system("rules", "prompt") == " content "
+        messages = [{"role": "system", "content": "rules"}, {"role": "user", "content": "prompt"}]
+    else:
+        assert llm.complete("prompt") == " content "
+        messages = [{"role": "user", "content": "prompt"}]
+    create.assert_called_once_with(model=llm.model, messages=messages, temperature=0.3)
+
+
+def test_system_retry(client, monkeypatch):
+    llm, sleep = client
+    create = Mock(side_effect=[error("timeout"), response()])
+    monkeypatch.setattr(llm._client.chat.completions, "create", create)
+    assert llm.complete_system("rules", "prompt") == "ok"
+    assert create.call_count == 2
+    assert create.call_args_list[0] == create.call_args_list[1]
+    sleep.assert_called_once_with(0.25)

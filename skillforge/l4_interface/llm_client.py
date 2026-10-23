@@ -5,12 +5,16 @@ from __future__ import annotations
 import math
 import os
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from openai.types.chat import ChatCompletionMessageParam
 
 from skillforge.shared.errors import ConfigError, LLMError, SkillForgeError
 
 
 class OpenAICompatibleClient:
-    """实现 L3 的 LLMClient 协议：complete(prompt) -> str。"""
+    """实现 L3 的 LLMClient 与 SystemPromptLLMClient，支持 complete 和 complete_system。"""
 
     def __init__(
         self,
@@ -50,6 +54,14 @@ class OpenAICompatibleClient:
         )
 
     def complete(self, prompt: str) -> str:
+        return self._create([{"role": "user", "content": prompt}])
+
+    def complete_system(self, system: str, user: str) -> str:
+        return self._create(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        )
+
+    def _create(self, messages: list[ChatCompletionMessageParam]) -> str:
         """首次调用失败后最多重试 max_retries 次，按基数指数退避。"""
         from openai import APIConnectionError, APIError, APIStatusError, RateLimitError
 
@@ -57,7 +69,7 @@ class OpenAICompatibleClient:
             try:
                 resp = self._client.chat.completions.create(
                     model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=messages,
                     temperature=0.3,
                 )
             except APIError as exc:
