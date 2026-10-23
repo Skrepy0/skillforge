@@ -69,3 +69,47 @@ def test_ask_interactively(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *a, **k: next(answers))
     out = cli._ask_interactively(["title", "degree_level"])
     assert out == {"title": "v1", "degree_level": "v2"}
+
+
+def test_run_agent_passes_skill_preview_and_assets(monkeypatch, tmp_path):
+    from skillforge.l3_orchestration.orchestrator import Orchestrator
+    from skillforge.l4_interface import llm_client
+
+    req = tmp_path / "req.json"
+    req.write_text(
+        json.dumps({"request": "PPT", "assets": {"photo": "photo.png"}}), encoding="utf-8"
+    )
+    captured = {}
+
+    class Fake:
+        def run(self, **kwargs):
+            captured.update(kwargs)
+            return {"status": "needs_review"}
+
+    monkeypatch.setattr(Orchestrator, "from_config", lambda **kwargs: Fake())
+    monkeypatch.setattr(llm_client, "OpenAICompatibleClient", lambda: object())
+    assert (
+        cli.main(
+            [
+                "run",
+                "--skill",
+                "explicit-skill",
+                "--input",
+                str(req),
+                "--pptx-agent",
+                "--pptx-preview",
+            ]
+        )
+        == 1
+    )
+    assert captured["skill_name"] == "explicit-skill"
+    assert captured["pptx_agent"] and captured["pptx_preview"]
+    assert captured["pptx_assets"]["photo"] == tmp_path / "photo.png"
+
+
+def test_preview_requires_agent():
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["run", "--skill", "x", "--input", "unused.json", "--pptx-preview"])
+    assert exc.value.code == 2

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from skillforge.l1_governance import observability, scoring
 from skillforge.l1_governance.rules import RULES
 from skillforge.shared.config import GatesConfig
@@ -57,5 +59,9 @@ class GateRunner:
                 ]
 
         result = scoring.compute(self.config.rules, results_by_rule, self.config.pass_threshold)
+        if contract.output == "pptx" and any(
+            failure.severity == "error" for failure in results_by_rule.get("format_check", [])
+        ):
+            result = replace(result, passed=False)
         observability.log_gate_result(logger, trace_id, session.session_id, result)
         return result

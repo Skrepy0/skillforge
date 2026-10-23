@@ -116,3 +116,12 @@ def test_invalid_tolerance_falls_back_to_default():
     draft = _draft(("背景", _body(100)), ("方法", _body(100)), ("结论", _body(100)))
     failures = check(draft, CONTRACT, _session(), bad_config)
     assert failures == []
+
+
+def test_pptx_short_slide_does_not_use_article_word_target():
+    contract = SkillContract("ppt", "", [], "pptx", ["原理"])
+    draft = DraftDocument(
+        "MUX", [{"heading": "原理", "body": "sel=0选择a\nsel=1选择b"}], output="pptx"
+    )
+    failures = check(draft, contract, _session(), {"default_word_count": 1800})
+    assert failures == []

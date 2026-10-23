@@ -11,7 +11,13 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Protocol, runtime_checkable
 
 from skillforge.l2_capability.loader import LoadedSkill
+from skillforge.l2_capability.pptx_content import (
+    fit_slide_content,
+    slide_content_errors,
+    supplied_slide_content,
+)
 from skillforge.l2_capability.prompt_builder import (
+    build_slide_repair_prompt,
     build_system_prompt,
     build_user_prompt,
 )
@@ -33,12 +39,38 @@ class TaskQueue:
         self.concurrency = max(1, concurrency)
 
     def _call(self, section: str, skill: LoadedSkill, collected: dict[str, str]) -> str:
+        plan = skill.contract.pptx_page_plan.get(section, {})
+        supplied = (
+            supplied_slide_content(section, collected, plan)
+            if skill.contract.output == "pptx"
+            else None
+        )
+        if supplied is not None:
+            content = supplied
+            errors = slide_content_errors(content, section, collected, plan)
+            if errors:
+                raise LLMError(f"页面“{section}”的采集资料不符合单页预算：" + "；".join(errors))
+            return content
         system = build_system_prompt()
         user = build_user_prompt(skill, section, collected)
+        original_user = user
         try:
-            if isinstance(self.llm, SystemPromptLLMClient):
-                return self.llm.complete_system(system, user).strip()
-            return self.llm.complete(system + "\n\n" + user).strip()
+            for _ in range(3):
+                if isinstance(self.llm, SystemPromptLLMClient):
+                    content = self.llm.complete_system(system, user).strip()
+                else:
+                    content = self.llm.complete(system + "\n\n" + user).strip()
+                if skill.contract.output == "pptx":
+                    content = fit_slide_content(content, section, collected, plan)
+                errors = (
+                    slide_content_errors(content, section, collected, plan)
+                    if skill.contract.output == "pptx"
+                    else []
+                )
+                if not errors:
+                    return content
+                user = original_user + build_slide_repair_prompt(content, errors)
+            raise LLMError(f"章节“{section}”连续3次未满足单页预算：{'；'.join(errors)}")
         except SkillForgeError:
             raise
         except Exception as exc:

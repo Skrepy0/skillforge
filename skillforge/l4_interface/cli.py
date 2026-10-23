@@ -52,6 +52,18 @@ def _cmd_run(args: argparse.Namespace) -> int:
         collected=payload.get("collected", {}),
         ask_fn=_ask_interactively,
         out_path=safe_out,
+        skill_name=args.skill,
+        **(
+            {
+                "pptx_agent": True,
+                "pptx_assets": _assets(
+                    payload.get("assets", {}), Path(args.input).resolve().parent
+                ),
+                "pptx_preview": args.pptx_preview,
+            }
+            if args.pptx_agent
+            else {}
+        ),
     )
 
     printable = {k: v for k, v in result.items() if k != "draft"}
@@ -70,6 +82,42 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print("\n信息不足，请补充后重试。")
         return 3
     return 1
+
+
+def _assets(raw: dict, base: Path) -> dict[str, Path]:
+    if not isinstance(raw, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in raw.items()
+    ):
+        raise SkillForgeError("assets 必须是素材别名到本地图片路径的映射")
+    return {name: (base / value).resolve() for name, value in raw.items()}
+
+
+def _cmd_pptx_inspect(args: argparse.Namespace) -> int:
+    from skillforge.l2_capability.renderer.pptx_editor import PptxEditor
+
+    print(json.dumps(PptxEditor(Path(args.input)).snapshot(), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_pptx_edit(args: argparse.Namespace) -> int:
+    from skillforge.l3_orchestration.pptx_agent import PptxAgent
+    from skillforge.l4_interface.llm_client import OpenAICompatibleClient
+
+    target = resolve_output_path(args.output, None, expected_suffix=".pptx")
+    assert target is not None
+    result = PptxAgent(OpenAICompatibleClient(), args.max_rounds, args.preview).run(
+        Path(args.input),
+        target,
+        {"request": args.request},
+        _assets(
+            json.loads(Path(args.assets).read_text(encoding="utf-8-sig")),
+            Path(args.assets).resolve().parent,
+        )
+        if args.assets
+        else None,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["status"] == "delivered" else 1
 
 
 def _cmd_validate(_args: argparse.Namespace) -> int:
@@ -102,17 +150,40 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--skill", required=True)
     p_run.add_argument("--input", required=True, help="请求 JSON 路径")
     p_run.add_argument("--output-dir", default=None, help="允许的输出目录（可选）")
+    p_run.add_argument("--pptx-agent", action="store_true", help="读取模板后用结构化操作编辑 PPT")
+    p_run.add_argument(
+        "--pptx-preview", action="store_true", help="编辑时渲染真实页面供视觉模型检查"
+    )
     p_run.set_defaults(func=_cmd_run)
 
     p_val = sub.add_parser("validate", help="校验技能包契约与 index.json")
     p_val.set_defaults(func=_cmd_validate)
+
+    p_inspect = sub.add_parser("pptx-inspect", help="读取 PPT 页面、元素 ID、文字、字体和尺寸")
+    p_inspect.add_argument("--input", required=True)
+    p_inspect.set_defaults(func=_cmd_pptx_inspect)
+
+    p_edit = sub.add_parser("pptx-edit", help="通过 LLM 编辑已有 PPT，另存为新文件")
+    p_edit.add_argument("--input", required=True)
+    p_edit.add_argument("--output", required=True)
+    p_edit.add_argument("--request", required=True)
+    p_edit.add_argument("--assets", help="图片素材别名到本地路径的 JSON 文件")
+    p_edit.add_argument("--max-rounds", type=int, default=12)
+    p_edit.add_argument("--preview", action="store_true", help="使用真实渲染和视觉模型检查")
+    p_edit.set_defaults(func=_cmd_pptx_edit)
 
     p_skills = sub.add_parser("skills", help="技能包管理")
     skills_sub = p_skills.add_subparsers(dest="skills_cmd", required=True)
     skills_sub.add_parser("list", help="列出所有技能").set_defaults(func=_cmd_skills_list)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    if getattr(args, "pptx_preview", False) and not getattr(args, "pptx_agent", False):
+        parser.error("--pptx-preview 需要同时启用 --pptx-agent")
+    try:
+        return args.func(args)
+    except (SkillForgeError, PathValidationError) as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

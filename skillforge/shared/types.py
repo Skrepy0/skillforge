@@ -35,6 +35,7 @@ class SkillContract:
     version: str = "0.1.0"
     template: str | None = None
     pptx_layouts: dict[str, str | int] = field(default_factory=dict)
+    pptx_page_plan: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

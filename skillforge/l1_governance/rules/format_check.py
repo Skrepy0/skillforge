@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from skillforge.l2_capability.pptx_content import slide_blocks, slide_content_errors
 from skillforge.shared.types import DraftDocument, GateFailure, SessionState, SkillContract
 
 DEFAULT_WORD_COUNT = 1800
@@ -96,4 +97,35 @@ def check(
     session: SessionState,
     config: dict[str, Any],
 ) -> list[GateFailure]:
-    return _check_sections(draft, contract) + _check_word_count(draft, session, config)
+    failures = _check_sections(draft, contract)
+    if contract.output == "pptx":
+        seen_code: dict[str, str] = {}
+        for section in draft.sections:
+            failures.extend(
+                GateFailure("format_check", section["heading"], error)
+                for error in slide_content_errors(
+                    section["body"],
+                    section["heading"],
+                    session.collected,
+                    contract.pptx_page_plan.get(section["heading"], {}),
+                )
+            )
+            try:
+                blocks = slide_blocks(section["body"], section["heading"])
+            except ValueError:
+                continue
+            for block in blocks:
+                if not block.code:
+                    continue
+                key = "".join(block.text.split())
+                if key in seen_code:
+                    failures.append(
+                        GateFailure(
+                            "format_check",
+                            section["heading"],
+                            f"代码块与章节“{seen_code[key]}”重复，请用简短要点引用，不要再次展示",
+                        )
+                    )
+                seen_code[key] = section["heading"]
+        return failures
+    return failures + _check_word_count(draft, session, config)

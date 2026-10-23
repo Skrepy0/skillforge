@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,6 +64,33 @@ class LoadedSkill:
     contract: SkillContract
     instructions: str
     references: dict[str, str]
+
+
+def _page_plan(path: Path, template: str | None, sections: list[str], fields: list[str]):
+    if template is None:
+        return {}
+    bindings = (path.parent / template).with_suffix(".bindings.json")
+    if not _is_inside(path.parent, bindings):
+        raise ContractViolation("模板页面计划路径越过技能目录")
+    if not bindings.exists():
+        return {}
+    try:
+        data = json.loads(bindings.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise ContractViolation("模板页面计划必须是合法JSON") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("page_plan", {}), dict):
+        raise ContractViolation("page_plan 必须是映射")
+    plan = data.get("page_plan", {})
+    for heading, spec in plan.items():
+        if heading not in sections or not isinstance(spec, dict):
+            raise ContractViolation("页面计划包含未知章节或非法配置")
+        if set(spec) - {"purpose", "code_field", "avoid"} or not all(
+            isinstance(v, str) and 0 < len(v) <= 1000 for v in spec.values()
+        ):
+            raise ContractViolation("页面计划只接受purpose/code_field/avoid字符串")
+        if "code_field" in spec and spec["code_field"] not in fields:
+            raise ContractViolation("页面代码来源必须是契约声明的采集字段")
+    return plan
 
 
 def parse_skill_file(path: Path) -> tuple[dict, str]:
@@ -135,6 +163,9 @@ def _build_contract(fm: dict, path: Path) -> SkillContract:
         version=str(meta.get("version", "0.1.0")),
         template=template,
         pptx_layouts=pptx_layouts,
+        pptx_page_plan=_page_plan(
+            path, template, sections, list(meta.get("required_fields") or [])
+        ),
     )
 
 

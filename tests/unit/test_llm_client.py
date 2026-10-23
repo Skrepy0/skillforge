@@ -26,7 +26,7 @@ def error(kind):
 
 @pytest.fixture
 def client(monkeypatch):
-    client = OpenAICompatibleClient(api_key="secret-key", backoff_base=0.25)
+    client = OpenAICompatibleClient(api_key="secret-key", backoff_base=0.25, json_mode=True)
     sleep = Mock()
     monkeypatch.setattr("skillforge.l4_interface.llm_client.time.sleep", sleep)
     yield client, sleep
@@ -37,6 +37,29 @@ def response(content="ok", empty=False):
     return SimpleNamespace(
         choices=[] if empty else [SimpleNamespace(message=SimpleNamespace(content=content))]
     )
+
+
+def test_visual_uses_rendered_png_content(client, monkeypatch, tmp_path):
+    from PIL import Image
+
+    llm, _ = client
+    image = tmp_path / "page.png"
+    Image.new("RGB", (20, 20), "white").save(image)
+    create = Mock(return_value=response('{"done":true}'))
+    monkeypatch.setattr(llm._client.chat.completions, "create", create)
+    assert llm.complete_visual("system", "inspect", [image]) == '{"done":true}'
+    message = create.call_args.kwargs["messages"][1]
+    assert message["content"][0] == {"type": "text", "text": "inspect"}
+    assert message["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
+    assert create.call_args.kwargs["response_format"] == {"type": "json_object"}
+
+
+def test_json_completion_requests_json_mode(client, monkeypatch):
+    llm, _ = client
+    create = Mock(return_value=response('{"operations":[]}'))
+    monkeypatch.setattr(llm._client.chat.completions, "create", create)
+    assert llm.complete_json("system", "user") == '{"operations":[]}'
+    assert create.call_args.kwargs["response_format"] == {"type": "json_object"}
 
 
 @pytest.mark.parametrize("kind", ["timeout", "connection", "429", "500", "503"])

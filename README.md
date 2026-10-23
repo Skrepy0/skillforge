@@ -325,6 +325,19 @@ uv run pytest tests/unit/test_api_security.py -q  # 需要 --extra api
 
 贡献指南见 [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)，变更记录见 [`CHANGELOG.md`](CHANGELOG.md)。
 
+## PPT 模板感知编辑（可选）
+
+在生成命令后增加 `--pptx-agent`，让模型读取实际模板页面的元素、字体和位置，
+再分轮执行文字、排版、形状、图片和淡入动画操作，每轮重新检查修改结果。
+默认保留模板风格，允许调整排版。
+
+```powershell
+uv run --extra api skillforge run --skill hnu-digital-circuit-seminar-ppt --input examples/ppt-request.json --output-dir ./outputs --pptx-agent
+```
+
+也可以通过 `skillforge pptx-edit` 编辑已有文件。真实页面预览、素材配置、
+能力范围和输出记录见 [PPT 编辑代理说明](docs/PPTX_AGENT.md)。
+
 ## License
 
 [MIT](./LICENSE)

@@ -5,10 +5,12 @@ from __future__ import annotations
 import math
 import os
 import time
-from typing import TYPE_CHECKING
+from base64 import b64encode
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from openai.types.chat import ChatCompletionMessageParam
+    from openai.types.chat import ChatCompletionContentPartParam, ChatCompletionMessageParam
 
 from skillforge.shared.errors import ConfigError, LLMError, SkillForgeError
 
@@ -24,6 +26,7 @@ class OpenAICompatibleClient:
         timeout: float = 120.0,
         max_retries: int = 3,
         backoff_base: float = 1.0,
+        json_mode: bool | None = None,
     ) -> None:
         from skillforge.shared.config import load_project_dotenv
 
@@ -46,9 +49,18 @@ class OpenAICompatibleClient:
             )
 
         self.model: str = model or os.getenv("SKILLFORGE_MODEL") or "gpt-4o-mini"
+        endpoint = base_url or os.getenv("OPENAI_BASE_URL")
+        # Compatible providers vary in response_format support. The editor still
+        # validates JSON locally when this provider feature is disabled.
+        self.json_mode = (
+            json_mode
+            if json_mode is not None
+            else os.getenv("SKILLFORGE_JSON_MODE", "false" if endpoint else "true").lower()
+            in {"true", "1", "yes"}
+        )
         self._client: OpenAI = OpenAI(
             api_key=key,
-            base_url=base_url or os.getenv("OPENAI_BASE_URL"),
+            base_url=endpoint,
             timeout=timeout,
             max_retries=0,  # 重试由本层统一控制，避免 SDK 重试叠加。
         )
@@ -61,16 +73,48 @@ class OpenAICompatibleClient:
             [{"role": "system", "content": system}, {"role": "user", "content": user}]
         )
 
-    def _create(self, messages: list[ChatCompletionMessageParam]) -> str:
+    def complete_json(self, system: str, user: str) -> str:
+        return self._create(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            json_mode=self.json_mode,
+        )
+
+    def complete_visual(self, system: str, user: str, images: list[Path]) -> str:
+        """Use real rendered PNG pages with a vision-capable compatible model."""
+        if not 1 <= len(images) <= 4:
+            raise LLMError("每轮视觉检查必须提供1至4张 PNG 预览")
+        content: list[ChatCompletionContentPartParam] = [{"type": "text", "text": user}]
+        for path in images:
+            data = path.read_bytes()
+            if not data.startswith(b"\x89PNG\r\n\x1a\n") or len(data) > 10 * 1024 * 1024:
+                raise LLMError("预览必须是小于10MB的 PNG 文件")
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/png;base64," + b64encode(data).decode("ascii")
+                    },
+                }
+            )
+        return self._create(
+            [{"role": "system", "content": system}, {"role": "user", "content": content}],
+            json_mode=self.json_mode,
+        )
+
+    def _create(self, messages: list[ChatCompletionMessageParam], json_mode: bool = False) -> str:
         """首次调用失败后最多重试 max_retries 次，按基数指数退避。"""
         from openai import APIConnectionError, APIError, APIStatusError, RateLimitError
 
         for attempt in range(self.max_retries + 1):
             try:
+                options: dict[str, Any] = (
+                    {"response_format": {"type": "json_object"}} if json_mode else {}
+                )
                 resp = self._client.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     temperature=0.3,
+                    **options,
                 )
             except APIError as exc:
                 # APITimeoutError 继承 APIConnectionError。

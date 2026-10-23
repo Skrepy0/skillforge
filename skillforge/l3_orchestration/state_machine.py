@@ -7,7 +7,11 @@ from skillforge.shared.types import SessionPhase, SessionState
 
 TRANSITIONS: dict[SessionPhase, dict[str, SessionPhase]] = {
     SessionPhase.COLLECTING: {"info_ready": SessionPhase.GENERATING},
-    SessionPhase.GENERATING: {"generate_done": SessionPhase.REVIEWING},
+    SessionPhase.GENERATING: {
+        "generate_done": SessionPhase.REVIEWING,
+        "edit_complete": SessionPhase.DELIVERED,
+        "edit_incomplete": SessionPhase.FALLBACK,
+    },
     SessionPhase.REVIEWING: {
         "gate_pass": SessionPhase.DELIVERED,
         "gate_fail": SessionPhase.REWRITING,

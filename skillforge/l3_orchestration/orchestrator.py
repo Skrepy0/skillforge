@@ -11,6 +11,7 @@ from typing import Protocol
 
 from skillforge.l1_governance.gate_runner import GateRunner
 from skillforge.l2_capability.loader import Loader
+from skillforge.l2_capability.pptx_content import normalize_slide_content
 from skillforge.l2_capability.renderer.docx_renderer import DocxRenderer
 from skillforge.l2_capability.renderer.markdown_renderer import MarkdownRenderer, markdown_text
 from skillforge.l2_capability.renderer.pptx_renderer import PptxRenderer
@@ -76,13 +77,19 @@ class Orchestrator:
         out_path: Path | None = None,
         trace_id: str = "",
         session_id: str | None = None,
+        pptx_agent: bool = False,
+        pptx_assets: dict[str, Path] | None = None,
+        pptx_preview: bool = False,
+        skill_name: str | None = None,
     ) -> dict:
         if not trace_id:
             trace_id = uuid.uuid4().hex
 
         stored = self.sessions.store.get(session_id) if session_id else None
         decision = (
-            RouteDecision(skill=stored.skill, confidence=1.0)
+            RouteDecision(skill=skill_name, confidence=1.0)
+            if skill_name
+            else RouteDecision(skill=stored.skill, confidence=1.0)
             if stored is not None and not request.strip()
             else self.router.route(request)
         )
@@ -161,6 +168,34 @@ class Orchestrator:
                 "未注入 LLMClient：请在 Orchestrator.from_config(llm=...) 传入"
             )
         self.fsm.transition(session, "info_ready")
+        if pptx_agent:
+            from skillforge.l3_orchestration.pptx_agent import PptxAgent
+
+            if contract.output != "pptx" or out_path is None:
+                raise RenderError("PPT 编辑代理需要 output=pptx 的技能和输出路径")
+            template = self._resolve_template(skill, contract)
+            if template is None:
+                raise RenderError("PPT 编辑代理需要技能配置 template")
+            safe = self._validate_render_target(Path(out_path), ".pptx")
+            edit_result = PptxAgent(self.queue.llm, preview=pptx_preview).run(
+                template,
+                safe,
+                {
+                    "request": request,
+                    "collected": session.collected,
+                    "sections": contract.sections,
+                    "page_plan": contract.pptx_page_plan,
+                    "reference_data": {
+                        "instructions": skill.instructions,
+                        "references": skill.references,
+                    },
+                },
+                assets=pptx_assets,
+            )
+            event = "edit_complete" if edit_result["status"] == "delivered" else "edit_incomplete"
+            self.fsm.transition(session, event)
+            self.sessions.store.save(session)
+            return {**edit_result, "session_id": session.session_id, "skill": contract.name}
         self.logger.info(
             "generate.start",
             extra={
@@ -185,8 +220,17 @@ class Orchestrator:
 
         while True:
             draft = DraftDocument(
-                title=session.collected.get("title", contract.name),
-                sections=[{"heading": h, "body": b} for h, b in session.drafts.items()],
+                title=session.collected.get("title")
+                or session.collected.get("topic_title", contract.name),
+                sections=[
+                    {
+                        "heading": h,
+                        "body": normalize_slide_content(b, h, session.collected)
+                        if contract.output == "pptx"
+                        else b,
+                    }
+                    for h, b in session.drafts.items()
+                ],
                 output=contract.output,
             )
             result = self.gates.run(draft, contract, session, trace_id)
