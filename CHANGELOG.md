@@ -5,6 +5,8 @@
 
 ## \[Unreleased]
 
+- 新增带 TTL 和容量上限的会话存储层，支持通过 `session_id` 续传多轮采集。
+
 - 修复 `FixedWindowRateLimiter` 过期 bucket 不清理导致的内存增长；按间隔惰性清理，docstring 明确单进程内存限流假设。
 
 - `OpenAICompatibleClient` 新增 `complete_system` 实现，修复文档与实现不一致；与 `complete` 共用重试与结果校验逻辑。

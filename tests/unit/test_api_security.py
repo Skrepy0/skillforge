@@ -40,7 +40,7 @@ def _fake_orchestrator(monkeypatch):
     monkeypatch.setattr(
         Orchestrator,
         "from_config",
-        classmethod(lambda cls, llm=None: _FakeOrch()),
+        classmethod(lambda cls, llm=None, session_store=None: _FakeOrch()),
     )
 
 

@@ -18,12 +18,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from skillforge.l3_orchestration.session_store import InMemorySessionStore
 from skillforge.l3_orchestration.task_queue import LLMClient
 from skillforge.shared.paths import PathValidationError, ensure_parent, resolve_output_path
 
 
 class GenerateRequest(BaseModel):
-    request: str = Field(..., description="用户原始请求，如“帮我写开题报告”")
+    session_id: str | None = Field(None, description="needs_input 后回传此 id，仅需补充缺失字段")
+    request: str = Field("", description="用户原始请求，如“帮我写开题报告”")
     skill: str | None = Field(None, description="可选：直接指定技能，跳过路由")
     collected: dict[str, str] = Field(default_factory=dict)
     out_path: str | None = Field(
@@ -175,6 +177,7 @@ def create_app(
     allowed_root = _parse_output_dir(allowed_output_dir)
 
     app = FastAPI(title="SkillForge", version="0.1.0")
+    app.state.session_store = InMemorySessionStore()
     app.state.limiter = limiter
     app.state.output_root = allowed_root
 
@@ -247,8 +250,9 @@ def create_app(
 
         try:
             trace_id = request.headers.get(trace_header, "")
-            result = Orchestrator.from_config(llm=llm).run(
+            result = Orchestrator.from_config(llm=llm, session_store=app.state.session_store).run(
                 request=req.request,
+                session_id=req.session_id,
                 collected=req.collected,
                 ask_fn=None,
                 out_path=safe_out,

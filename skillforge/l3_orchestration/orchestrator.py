@@ -19,12 +19,13 @@ from skillforge.l3_orchestration.fallback import Fallback
 from skillforge.l3_orchestration.rewrite import Rewriter
 from skillforge.l3_orchestration.router import Router
 from skillforge.l3_orchestration.session import SessionManager
+from skillforge.l3_orchestration.session_store import SessionStore
 from skillforge.l3_orchestration.state_machine import StateMachine
 from skillforge.l3_orchestration.task_queue import LLMClient, TaskQueue
 from skillforge.shared.config import AppConfig, load_config
 from skillforge.shared.errors import RenderError
 from skillforge.shared.logger import get_logger
-from skillforge.shared.types import DraftDocument, SkillContract
+from skillforge.shared.types import DraftDocument, RouteDecision, SessionPhase, SkillContract
 
 
 class _MissingLLM:
@@ -43,12 +44,14 @@ class RendererProtocol(Protocol):
 
 
 class Orchestrator:
-    def __init__(self, config: AppConfig, llm: LLMClient) -> None:
+    def __init__(
+        self, config: AppConfig, llm: LLMClient, session_store: SessionStore | None = None
+    ) -> None:
         self.config = config
         self.logger = get_logger("skillforge.l3", config.logging)
         self.loader = Loader(config.skills_root)
         self.router = Router(config.routing)
-        self.sessions = SessionManager()
+        self.sessions = SessionManager(session_store)
         self.fsm = StateMachine()
         self.queue = TaskQueue(llm, config.settings.queue_concurrency)
         self.rewriter = Rewriter(llm)
@@ -58,21 +61,29 @@ class Orchestrator:
         self.fallback = Fallback()
 
     @classmethod
-    def from_config(cls, llm: LLMClient | None = None) -> Orchestrator:
-        return cls(load_config(), llm or _MissingLLM())
+    def from_config(
+        cls, llm: LLMClient | None = None, session_store: SessionStore | None = None
+    ) -> Orchestrator:
+        return cls(load_config(), llm or _MissingLLM(), session_store)
 
     def run(
         self,
-        request: str,
+        request: str = "",
         collected: dict[str, str] | None = None,
         ask_fn: Callable[[list[str]], dict[str, str]] | None = None,
         out_path: Path | None = None,
         trace_id: str = "",
+        session_id: str | None = None,
     ) -> dict:
         if not trace_id:
             trace_id = uuid.uuid4().hex
 
-        decision = self.router.route(request)
+        stored = self.sessions.store.get(session_id) if session_id else None
+        decision = (
+            RouteDecision(skill=stored.skill, confidence=1.0)
+            if stored is not None and not request.strip()
+            else self.router.route(request)
+        )
         self.logger.info(
             "route.decided",
             extra={
@@ -98,7 +109,9 @@ class Orchestrator:
         skill = self.loader.load(decision.skill)
         contract = skill.contract
 
-        session = self.sessions.create(decision.skill)
+        session = self.sessions.get_or_create(decision.skill, session_id)
+        if session.phase != SessionPhase.COLLECTING:
+            session = self.sessions.create(decision.skill)
         self.sessions.merge(session, filter_collected(contract, collected or {}))
 
         missing = missing_fields(contract, session.collected)
@@ -212,6 +225,7 @@ class Orchestrator:
                         "has_output": out is not None,
                     },
                 )
+                self.sessions.store.save(session)
                 return {
                     "status": "delivered",
                     "session_id": session.session_id,
@@ -233,6 +247,7 @@ class Orchestrator:
                         "rules_failed": sorted({f.rule for f in result.failures}),
                     },
                 )
+                self.sessions.store.save(session)
                 return {**self.fallback.template(session, result), "session_id": session.session_id}
 
             self.fsm.transition(session, "gate_fail")

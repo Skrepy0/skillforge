@@ -268,3 +268,17 @@ uv run pytest tests/unit/test_api_security.py -q  # 需要 --extra api
 ## License
 
 [MIT](./LICENSE)
+
+
+### API 会话续传
+
+`POST /generate` 返回 `needs_input` 后，下一次请求可省略 `request`，
+仅发送 `{"session_id": "上次返回的 ID", "collected": {"缺失字段": "补充内容"}}`，
+并携带相同的 API 鉴权头。服务端保留之前采集的字段，返回同一个会话 ID。
+只有采集阶段支持续传；已交付或降级的会话会新建 ID 并重新采集。
+未知或过期 ID 不恢复旧数据：有原请求时重新路由，没有时返回路由澄清。
+
+默认会话存储为单进程内存，最后保存后 1 小时过期，最多 1000 条，满额时
+淘汰最久未保存的会话；重启丢失，多 worker/多实例不共享。
+跨实例部署需通过 `SessionStore` 接口接入 Redis/SQLite 等外部存储。
+同一会话请串行续传，并发保存采用最后写入覆盖语义。

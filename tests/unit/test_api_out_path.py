@@ -41,7 +41,7 @@ def _fake_orchestrator(monkeypatch) -> list[dict]:
     monkeypatch.setattr(
         Orchestrator,
         "from_config",
-        classmethod(lambda cls, llm=None: _FakeOrch()),
+        classmethod(lambda cls, llm=None, session_store=None: _FakeOrch()),
     )
     return calls
 
