@@ -32,7 +32,7 @@ uv sync --extra api
 
 ### 配置环境变量
 
-复制 `.env.example` 为 `.env`，填入真实值：
+首次使用时复制 `.env.example` 为 `.env`，填入配置；已有 `.env` 时直接编辑，避免覆盖：
 
 ```bash
 # Linux/macOS
@@ -58,6 +58,36 @@ Copy-Item .env.example .env
 
 优先级：shell 环境变量 > `.env` > 代码默认值。
 
+### 本地 Ollama
+
+先用 `ollama list` 查看已安装模型，将完整模型名称（包括标签）填入 `.env`：
+
+```dotenv
+OPENAI_API_KEY=ollama
+OPENAI_BASE_URL=http://127.0.0.1:11434/v1
+SKILLFORGE_MODEL=替换为本机模型完整名称
+```
+
+项目要求 API key 非空，本地 Ollama 使用 `ollama` 作为占位值即可。
+实际调用的模型由 `SKILLFORGE_MODEL` 决定，`config/settings.yaml` 中的 `model` 不参与客户端模型选择。
+端点使用 `/v1`，参见 [Ollama OpenAI 兼容接口说明](https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx)。
+
+Ollama 未运行时，在单独终端执行 `ollama serve`。若提示 `11434` 端口已占用，
+通常表示后台服务已经启动，可在 PowerShell 中验证：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:11434/api/tags
+```
+
+安装依赖并单独测试模型连接：
+
+```bash
+uv sync --extra api
+uv run --extra api python -c "from skillforge.l4_interface.llm_client import OpenAICompatibleClient; print(OpenAICompatibleClient().complete('你好，请简短回复'))"
+```
+
+返回模型回复后，再执行下面的完整生成示例。若修改 `.env` 后仍使用旧配置，检查终端是否设置了同名环境变量。
+
 ### API 服务端配置
 
 FastAPI 接入额外读取：
@@ -70,7 +100,7 @@ FastAPI 接入额外读取：
 
 ## 快速开始（CLI）
 
-当前仓库只注册了一个测试技能 `test-skill`（`required_fields: ["topic"]`），用于验证路由、门禁、prompt 边界链路。
+当前注册了 Markdown 测试技能 `test-skill`（必填 `topic`）和 PPT 技能 `hnu-digital-circuit-seminar-ppt`。下面先运行 Markdown 示例，PPT 示例见后文。
 
 ```bash
 # 列出已注册技能
@@ -87,21 +117,21 @@ uv run skillforge validate
 ```bash
 cat > input.json <<'EOF'
 {
-  "request": "帮我写点东西",
+  "request": "使用 test-skill 测试技能生成内容",
   "collected": {"topic": "示例主题"},
-  "out_path": "out.docx"
+  "out_path": "result.md"
 }
 EOF
 ```
 
-**Windows PowerShell**（无 BOM）
+**PowerShell 7+**（无 BOM；Windows PowerShell 5.1 可使用 `Set-Content -Encoding UTF8`，CLI 也支持读取 BOM）
 
 ```powershell
 @'
 {
-  "request": "帮我写点东西",
+  "request": "使用 test-skill 测试技能生成内容",
   "collected": {"topic": "示例主题"},
-  "out_path": "out.docx"
+  "out_path": "result.md"
 }
 '@ | Set-Content -Encoding utf8NoBOM input.json
 ```
@@ -109,25 +139,35 @@ EOF
 执行生成：
 
 ```bash
-uv run skillforge run --skill test-skill --input input.json
+uv run --extra api skillforge run --skill test-skill --input input.json
 
 # 限制输出目录（也可用 SKILLFORGE_OUTPUT_DIR，命令行参数优先）
-uv run skillforge run --skill test-skill --input input.json --output-dir ./out
+uv run --extra api skillforge run --skill test-skill --input input.json --output-dir ./outputs
 ```
 
 `.env` 自动加载，无需 `--env-file`。
 
 ### `input.json` 字段
 
+**当前 `--skill` 不会强制选择技能**：仅在 JSON 未提供 `request` 时作为请求文本默认值。
+路由按 `config/routing.yaml` 的关键词命中比例打分；示例中的 `request` 已包含足够关键词。
+`needs_clarification` 表示尚未进入模型生成，可能是匹配分数不足，不一定命中了多个技能。
+
 | 字段        | 类型             | 说明                                                        |
 | :---------- | :--------------- | :---------------------------------------------------------- |
 | `request`   | `str`            | 用户原始请求，路由据此匹配技能                              |
 | `collected` | `dict[str, str]` | 已采集字段，**只保留目标技能 `required_fields` 中声明的键** |
-| `out_path`  | `str \| null`    | 输出相对路径；`.docx` 或 `.pptx`，需匹配技能声明的 `output`。省略或为 `null` 时只返回草稿，不落盘 |
+| `out_path`  | `str \| null`    | 输出相对路径；`.md`、`.docx` 或 `.pptx`，需匹配技能声明的 `output`。省略或为 `null` 时只返回草稿，不落盘 |
 
 `collected` 的字段由目标技能的 `required_fields` 决定，**契约外字段会被白名单过滤丢弃**。用 `uv run skillforge skills list` 查看已注册技能，或直接读对应 `SKILL.md` 的 `required_fields`。
 
 ### CLI 输出
+
+Markdown 技能生成成功后会直接在终端显示标题、章节和正文。省略 `out_path` 时不保存文件；
+需要保存时，在输入 JSON 中设置 `"out_path": "result.md"`。配置了
+`SKILLFORGE_OUTPUT_DIR=./outputs` 时，文件保存在 `outputs/result.md`。
+Markdown、Word 和 PowerPoint 技能分别使用 `.md`、`.docx` 和 `.pptx` 后缀，
+文件输出均经过目录白名单和路径校验。
 
 成功时输出 JSON：
 
@@ -137,8 +177,7 @@ uv run skillforge run --skill test-skill --input input.json --output-dir ./out
   "session_id": "a1b2...",
   "skill": "test-skill",
   "gate": { "passed": true, "score": 1.0, "threshold": 0.8 },
-  "failures": null,
-  "output_path": "out.docx"
+  "output_path": "result.md"
 }
 ```
 
@@ -146,13 +185,34 @@ uv run skillforge run --skill test-skill --input input.json --output-dir ./out
 
 缺信息时 `status` 为 `needs_input`，`missing` 列出缺失字段，CLI 会**交互式追问**并读取终端输入后继续。门禁不通过且重写轮次用尽时 `status` 为 `fallback`，返回降级模板和失败原因。
 
-返回码：`0` 交付成功，`1` 降级/失败，`2` LLM 初始化失败，`3` 信息不足。
+返回码：`0` 交付成功，`1` 降级/失败，`2` LLM 初始化失败或输出路径非法，`3` 信息不足。
+
+`delivered` 表示加权得分达到门禁阈值，不代表每条检查均通过；请查看 `gate` 中的 `failures`。
+例如测试技能的篇幅要求与全局字数目标可能不一致，产生 `format_check` 扣分后仍可交付。
+
+### PPT 示例
+
+仓库提供 [examples/ppt-request.json](examples/ppt-request.json)，主题为“二选一多路选择器：从 Verilog 设计到功能验证”。
+请求包含 PPT 技能的全部八个必填字段：`member_info`、`topic_category`、`topic_title`、
+`quartus_version`、`problem_description`、`screenshots`、`code_snippet`、`discussion_focus`。
+这些字段的值均为字符串；修改题目时保留路由所需的课程关键词。
+示例为快速导出测试：每页最多 3 条要点、每条不超过 20 字，不生成讲稿。
+仍需逐章调用模型生成 12 个章节；本地模型耗时取决于硬件与模型大小，门禁重写会增加调用次数。
+
+```bash
+uv run --extra api skillforge run --skill hnu-digital-circuit-seminar-ppt --input examples/ppt-request.json --output-dir ./outputs
+```
+
+通过门禁后输出 `outputs/mux2-seminar.pptx`，使用技能包中的 `assets/template.pptx`。
+示例使用虚构成员、示例环境和逻辑推导的预期结果，没有真实实验截图或实测数据。
+当前 PPT 渲染器主要填充标题和正文，不会根据 `screenshots` 字符串自动插图或画红框；
+正式汇报前需补充真实截图并检查排版。
 
 ### 说明
 
 - `skillforge run` **需要装 `[api]` extra**——它使用 `OpenAICompatibleClient`，依赖 `openai` 包。
 - 生成结果是**草稿**，`gate` 与 `failures` 随 JSON 输出，提交前须自行核对。
-- `out_path` 走 `shared/paths.py` 校验：拒绝 `..`、非 `.docx`、含控制字符（无论是否配置输出根目录）。**CLI 模式未配置输出根目录时，绝对路径和深层路径原样放行**——本地工具，用户即操作者。如需限制，设 `SKILLFORGE_OUTPUT_DIR` 或加 `--output-dir`（命令行参数优先于环境变量），此时绝对路径、符号链接逃逸、超过 3 层的相对路径都会被拒。API 模式未配置 `SKILLFORGE_OUTPUT_DIR` 时，携带 `out_path` 的请求返回 **403**；已配置时，绝对路径、`..`、符号链接逃逸等非法路径返回 **400**。
+- `out_path` 走 `shared/paths.py` 校验：拒绝 `..`、非 `.md` / `.docx` / `.pptx` 后缀、含控制字符（无论是否配置输出根目录）。**CLI 模式未配置输出根目录时，绝对路径和深层路径原样放行**——本地工具，用户即操作者。如需限制，设 `SKILLFORGE_OUTPUT_DIR` 或加 `--output-dir`（命令行参数优先于环境变量），此时绝对路径、符号链接逃逸、超过 3 层的相对路径都会被拒。API 模式未配置 `SKILLFORGE_OUTPUT_DIR` 时，携带 `out_path` 的请求返回 **403**；已配置时，绝对路径、`..`、符号链接逃逸等非法路径返回 **400**。
 
 ## API 模式
 
@@ -194,7 +254,7 @@ curl -X POST http://127.0.0.1:8000/generate \
   -H "X-API-Key: <your-api-key>" \
   -H "X-Trace-Id: trace-123" \
   -H "Content-Type: application/json" \
-  -d '{"request": "帮我写点东西", "collected": {"topic": "示例主题"}}'
+  -d '{"request": "使用 test-skill 测试技能生成内容", "collected": {"topic": "示例主题"}}'
 ```
 
 > **注意**：`.env` 由 Python 进程加载，**shell 里读不到 `$SKILLFORGE_API_KEY`**。要么 curl 里直接填 key，要么在启动 uvicorn 的 shell 里先 `source .env`（Windows 用 `. .\.env` 需配合脚本，或直接填 key 更省事）。
@@ -210,7 +270,7 @@ from skillforge.l4_interface.agent_host import handle
 from skillforge.l4_interface.llm_client import OpenAICompatibleClient
 
 result = handle(
-    request="帮我写点东西",
+    request="使用 test-skill 测试技能生成内容",
     collected={"topic": "示例主题"},
     llm=OpenAICompatibleClient(),
 )
@@ -226,7 +286,7 @@ if result["status"] == "needs_input":
 ```text
 skillforge/
 ├── l1_governance/    # 门禁规则 + 打分（GateRunner / scoring / observability）
-├── l2_capability/    # 技能加载、prompt 组装、sanitize、docx/pptx 渲染
+├── l2_capability/    # 技能加载、prompt 组装、sanitize、markdown/docx/pptx 渲染
 ├── l3_orchestration/ # 路由、状态机、并发生成、重写、降级
 ├── l4_interface/     # CLI / FastAPI / Agent 宿主 / LLM 客户端
 └── shared/           # 契约类型、配置、错误、日志、路径校验

@@ -12,6 +12,7 @@ from typing import Protocol
 from skillforge.l1_governance.gate_runner import GateRunner
 from skillforge.l2_capability.loader import Loader
 from skillforge.l2_capability.renderer.docx_renderer import DocxRenderer
+from skillforge.l2_capability.renderer.markdown_renderer import MarkdownRenderer, markdown_text
 from skillforge.l2_capability.renderer.pptx_renderer import PptxRenderer
 from skillforge.l2_capability.sanitize import filter_collected
 from skillforge.l3_orchestration.contract import missing_fields
@@ -206,12 +207,14 @@ class Orchestrator:
             if result.passed:
                 self.fsm.transition(session, "gate_pass")
                 out = None
-                if out_path is not None and contract.output in ("docx", "pptx"):
-                    expected = f".{contract.output}"
+                if out_path is not None:
+                    expected = ".md" if contract.output == "markdown" else f".{contract.output}"
                     safe = self._validate_render_target(Path(out_path), expected)
                     safe.parent.mkdir(parents=True, exist_ok=True)
 
-                    if contract.output == "docx":
+                    if contract.output == "markdown":
+                        out = MarkdownRenderer().render(draft, safe)
+                    elif contract.output == "docx":
                         out = self.renderer.render(draft, safe)
                     else:
                         template = self._resolve_template(skill, contract)
@@ -308,6 +311,8 @@ class Orchestrator:
                 default=str,
             )
         )
+        if result.get("draft") is not None and result["draft"].output == "markdown":
+            print(markdown_text(result["draft"]))
         return 0 if result["status"] == "delivered" else 1
 
     def _output_root(self) -> Path | None:

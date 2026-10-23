@@ -1,6 +1,11 @@
 similarity_threshold: 0.5
 clarify_gap: 0.10
 keywords:
+  hnu-digital-circuit-seminar-ppt:
+    - 数字电路小班课
+    - 数电讨论
+    - HNU数字电路
+    - 湖南大学小班课PPT
   test-skill:
     - 测试
     - test

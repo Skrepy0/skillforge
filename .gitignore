@@ -31,4 +31,4 @@ wheels/
 !.env.example
 
 # others
-out
+outputs

@@ -1,0 +1,5 @@
+{
+  "request": "使用 test-skill 测试技能生成内容",
+  "collected": { "topic": "本地 Ollama 模型接入测试" },
+  "out_path": "result.md"
+}

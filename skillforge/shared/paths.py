@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 MAX_PATH_DEPTH = 3
-_ALLOWED_SUFFIXES = (".docx", ".pptx")
+_ALLOWED_SUFFIXES = (".docx", ".pptx", ".md")
 _SAFE_MESSAGE = "非法输出路径"
 
 

@@ -58,6 +58,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(json.dumps(printable, ensure_ascii=False, indent=2, default=str))
 
     if result["status"] == "delivered":
+        draft = result.get("draft")
+        if draft is not None and draft.output == "markdown":
+            from skillforge.l2_capability.renderer.markdown_renderer import markdown_text
+
+            print(markdown_text(draft))
         print(f"\n已生成：{result.get('output_path') or '（Markdown 草稿）'}")
         print("这是草稿，提交前请对照学校要求逐项核对。")
         return 0
