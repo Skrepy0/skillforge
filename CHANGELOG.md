@@ -5,6 +5,11 @@
 
 ## \[Unreleased]
 
+- 缺少 LLM 时在采集完成、进入生成前报错，保留无 LLM 的澄清与追问。
+- API 在应用创建时构造并复用 Orchestrator，减少配置加载与组件重复创建。
+- 渲染期复用 shared 路径校验，并强制匹配契约后缀；CLI 保留绝对路径支持，API 继续拒绝绝对路径。
+- API 门禁辅助函数补充类型标注，FastAPI 版本读取统一的 `__version__`。
+
 - 新增带 TTL 和容量上限的会话存储层，支持通过 `session_id` 续传多轮采集。
 
 - 修复 `FixedWindowRateLimiter` 过期 bucket 不清理导致的内存增长；按间隔惰性清理，docstring 明确单进程内存限流假设。

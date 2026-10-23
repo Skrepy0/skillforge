@@ -35,7 +35,11 @@ def _always_pass() -> GateResult:
 
 
 def test_full_run_logs_trace_id_and_events(monkeypatch, capture_l3):
-    orch = Orchestrator.from_config(llm=None)
+    class FakeLLM:
+        def complete(self, prompt: str) -> str:
+            return "正文"
+
+    orch = Orchestrator.from_config(llm=FakeLLM())
 
     monkeypatch.setattr(
         orch.router,

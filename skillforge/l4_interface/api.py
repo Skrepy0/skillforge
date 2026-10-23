@@ -21,6 +21,8 @@ from pydantic import BaseModel, Field
 from skillforge.l3_orchestration.session_store import InMemorySessionStore
 from skillforge.l3_orchestration.task_queue import LLMClient
 from skillforge.shared.paths import PathValidationError, ensure_parent, resolve_output_path
+from skillforge.shared.types import GateResult
+from skillforge.shared.version import __version__
 
 
 class GenerateRequest(BaseModel):
@@ -126,13 +128,13 @@ def _parse_output_dir(value: Path | str | None) -> Path | None:
     return Path(env).resolve()
 
 
-def _gate_dict(gate) -> dict | None:
+def _gate_dict(gate: GateResult | None) -> dict | None:
     if gate is None:
         return None
     return {"passed": gate.passed, "score": gate.score, "threshold": gate.threshold}
 
 
-def _failures(gate) -> list[dict] | None:
+def _failures(gate: GateResult | None) -> list[dict] | None:
     if gate is None or not gate.failures:
         return None
     return [
@@ -176,8 +178,15 @@ def create_app(
     limiter = FixedWindowRateLimiter(_parse_rate_limit(rate_limit_per_minute))
     allowed_root = _parse_output_dir(allowed_output_dir)
 
-    app = FastAPI(title="SkillForge", version="0.1.0")
+    app = FastAPI(title="SkillForge", version=__version__)
+    from skillforge.l3_orchestration.orchestrator import Orchestrator
+
     app.state.session_store = InMemorySessionStore()
+    app.state.orchestrator = (
+        Orchestrator.from_config(llm=llm, session_store=app.state.session_store)
+        if llm is not None
+        else None
+    )
     app.state.limiter = limiter
     app.state.output_root = allowed_root
 
@@ -245,12 +254,11 @@ def create_app(
             ensure_parent(safe_out)
             rel_out = safe_out.relative_to(allowed_root.resolve()).as_posix()
 
-        from skillforge.l3_orchestration.orchestrator import Orchestrator
         from skillforge.shared.errors import SkillNotFound
 
         try:
             trace_id = request.headers.get(trace_header, "")
-            result = Orchestrator.from_config(llm=llm, session_store=app.state.session_store).run(
+            result = request.app.state.orchestrator.run(
                 request=req.request,
                 session_id=req.session_id,
                 collected=req.collected,

@@ -25,6 +25,7 @@ from skillforge.l3_orchestration.task_queue import LLMClient, TaskQueue
 from skillforge.shared.config import AppConfig, load_config
 from skillforge.shared.errors import RenderError
 from skillforge.shared.logger import get_logger
+from skillforge.shared.paths import PathValidationError, resolve_output_path
 from skillforge.shared.types import DraftDocument, RouteDecision, SessionPhase, SkillContract
 
 
@@ -154,6 +155,10 @@ class Orchestrator:
                 )
                 return {**self.fallback.needs_input(missing), "session_id": session.session_id}
 
+        if isinstance(self.queue.llm, _MissingLLM):
+            raise NotImplementedError(
+                "未注入 LLMClient：请在 Orchestrator.from_config(llm=...) 传入"
+            )
         self.fsm.transition(session, "info_ready")
         self.logger.info(
             "generate.start",
@@ -313,16 +318,17 @@ class Orchestrator:
         return p if p.is_absolute() else self.config.root / p
 
     def _validate_render_target(self, out_path: Path, expected_suffix: str = ".docx") -> Path:
-        if out_path.suffix.lower() != expected_suffix:
-            raise RenderError(f"输出路径必须以 {expected_suffix} 结尾")
-        root = self._output_root()
-        if root is None:
-            return out_path
-        resolved = out_path.resolve() if out_path.is_absolute() else (root / out_path).resolve()
         try:
-            resolved.relative_to(root.resolve())
-        except ValueError as exc:
-            raise RenderError("输出路径越过允许目录") from exc
+            resolved = resolve_output_path(
+                out_path,
+                allowed_root=self._output_root(),
+                require_root=False,
+                expected_suffix=expected_suffix,
+                allow_absolute=True,
+            )
+        except PathValidationError as exc:
+            raise RenderError(str(exc)) from exc
+        assert resolved is not None
         return resolved
 
     def _resolve_template(self, skill, contract: SkillContract) -> Path | None:

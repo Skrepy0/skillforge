@@ -28,7 +28,13 @@ def resolve_output_path(
     *,
     require_root: bool = False,
     max_depth: int = MAX_PATH_DEPTH,
+    expected_suffix: str | None = None,
+    allow_absolute: bool = False,
 ) -> Path | None:
+    """校验通用路径；渲染期可指定契约后缀并显式允许绝对路径。
+
+    有 root 时绝对路径仍须位于 root 内，深度按 root 内的相对路径计算。
+    """
     if raw is None:
         return None
 
@@ -39,6 +45,8 @@ def resolve_output_path(
     p = Path(text)
     if p.suffix.lower() not in _ALLOWED_SUFFIXES:
         raise PathValidationError(_SAFE_MESSAGE)
+    if expected_suffix is not None and p.suffix.lower() != expected_suffix:
+        raise PathValidationError(_SAFE_MESSAGE)
     if any(part == ".." for part in p.parts):
         raise PathValidationError(_SAFE_MESSAGE)
 
@@ -47,10 +55,16 @@ def resolve_output_path(
             raise PathValidationError("服务端未启用文件输出")
         return p
 
-    if p.is_absolute() or text.startswith(("/", "\\")):
+    if not allow_absolute and (p.is_absolute() or text.startswith(("/", "\\"))):
         raise PathValidationError(_SAFE_MESSAGE)
 
-    depth = len([part for part in p.parts if part not in (".", "")])
+    depth_path = p
+    if p.is_absolute():
+        try:
+            depth_path = p.resolve().relative_to(allowed_root.resolve())
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise PathValidationError(_SAFE_MESSAGE) from exc
+    depth = len([part for part in depth_path.parts if part not in (".", "")])
     if depth > max_depth:
         raise PathValidationError(_SAFE_MESSAGE)
 

@@ -455,3 +455,15 @@ chore(config): lower routing threshold to 0.5
 ---
 
 有问题开 issue，或直接在 PR 里 @ 维护者。
+
+
+### 发布与 API 并发约定
+
+版本号以 `skillforge/shared/version.py` 的 `__version__` 为唯一来源。
+发布时更新该值，将 CHANGELOG 的 Unreleased 条目移至对应版本并注明日期，
+运行 `uv run poe check` 后按版本创建发布标签。
+
+API 每个应用实例复用一个 Orchestrator：Loader 只保存技能根路径，Router、
+GateRunner 只读配置；Renderer 每次调用创建独立文档，运行中的会话与草稿为局部对象。
+内存会话存储在锁内读写副本；同一会话并发保存为最后写入覆盖，应串行续传。
+注入的 LLMClient 必须支持并发调用；并发渲染时应为每个请求选择独立输出路径。
